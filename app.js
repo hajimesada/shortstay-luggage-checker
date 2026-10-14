@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -290,6 +290,20 @@ function newRegistration(){
   toast('新規登録を開始しました');
 }
 
+function ensureCurrentSession(){
+  // 初回登録時に currentSession がまだ無くても、
+  // 読み込んだ写真や選択範囲を消さずに空の登録セッションだけ作る。
+  if(state.currentSession) return state.currentSession;
+  state.currentSession={
+    id:crypto.randomUUID(),
+    name:'',
+    createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString(),
+    items:[]
+  };
+  return state.currentSession;
+}
+
 function loadRegistrationSession(){
   const id=els.registerSessionSelect.value;
   if(!id){ newRegistration(); return; }
@@ -441,31 +455,55 @@ function recalcSelectionFromCenter(){
 async function registerSelection(category){
   ensureAudio();
   if(!state.photos.length || !state.selectedRect){ toast('先に写真の物品をタップしてください'); return; }
-  const name=els.residentName.value.trim(); if(!name){ toast('利用者名・識別名を入力してください'); els.residentName.focus(); return; }
-  if(!state.currentSession) newRegistration();
+  const name=els.residentName.value.trim();
+  if(!name){ toast('利用者名・識別名を入力してください'); els.residentName.focus(); return; }
+
+  // 重要: newRegistration() は写真・選択範囲も初期化するため、
+  // 初回のカテゴリタップ時には呼ばない。セッションだけ作成する。
+  ensureCurrentSession();
   state.currentSession.name=name;
-  pushUndo();
-  const p=state.photos[state.photoIndex];
-  const crop=await cropDataURL(p.img,state.selectedRect,320,.86);
-  const cropImg=await loadImage(crop);
-  const descriptor=extractDescriptor(cropImg);
-  const item={
-    id:crypto.randomUUID(), category, crop, descriptor, checked:false,
-    sourcePhotoIndex:state.photoIndex, marker:{...state.selectedRect}, createdAt:new Date().toISOString()
-  };
-  // Same-category near-identical registrations are linked as a quantity group, but kept as separate instances.
-  const siblings=state.currentSession.items.filter(x=>x.category===category);
-  let groupId=null;
-  for(const s of siblings){
-    const sim=descriptorSimilarity(descriptor,s.descriptor);
-    if(sim>=.94){ groupId=s.groupId||s.id; if(!s.groupId) s.groupId=groupId; break; }
+
+  try{
+    pushUndo();
+    const p=state.photos[state.photoIndex];
+    if(!p || !p.img) throw new Error('選択中の写真を取得できませんでした');
+
+    const crop=await cropDataURL(p.img,state.selectedRect,320,.86);
+    const cropImg=await loadImage(crop);
+    const descriptor=extractDescriptor(cropImg);
+    const item={
+      id:crypto.randomUUID(), category, crop, descriptor, checked:false,
+      sourcePhotoIndex:state.photoIndex, marker:{...state.selectedRect}, createdAt:new Date().toISOString()
+    };
+
+    // Same-category near-identical registrations are linked as a quantity group, but kept as separate instances.
+    const siblings=state.currentSession.items.filter(x=>x.category===category);
+    let groupId=null;
+    for(const s of siblings){
+      const sim=descriptorSimilarity(descriptor,s.descriptor);
+      if(sim>=.94){ groupId=s.groupId||s.id; if(!s.groupId) s.groupId=groupId; break; }
+    }
+    item.groupId=groupId;
+    state.currentSession.items.push(item);
+    state.redo=[];
+    const registeredRect={...state.selectedRect};
+    state.selectedRect=null;
+    els.customCategory.value='';
+    els.customRow.classList.add('hidden');
+    renderHistory();
+    updateUndoRedo();
+    drawRegisterPhoto();
+    const count=state.currentSession.items.filter(x=>x.category===category).length;
+    successChime();
+    showRegisterSuccess(category,count,registeredRect);
+    toast(`✨ ${category} 登録！  ×${count}`);
+  }catch(err){
+    console.error('物品登録エラー',err);
+    // pushUndoした直後に失敗した場合、不要なUndo履歴を戻す
+    if(state.undo.length) state.undo.pop();
+    updateUndoRedo();
+    toast(`登録できませんでした：${err?.message||'処理エラー'}`);
   }
-  item.groupId=groupId;
-  state.currentSession.items.push(item); state.redo=[]; const registeredRect={...state.selectedRect}; state.selectedRect=null;
-  els.customCategory.value=''; els.customRow.classList.add('hidden');
-  renderHistory();updateUndoRedo();drawRegisterPhoto();
-  const count=state.currentSession.items.filter(x=>x.category===category).length;
-  successChime(); showRegisterSuccess(category,count,registeredRect); toast(`✨ ${category} 登録！  ×${count}`);
 }
 
 function pushUndo(){
