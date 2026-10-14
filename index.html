@@ -28,7 +28,7 @@
       <section class="screen active" id="homeScreen">
         <div class="hero card">
           <div class="mascot">📦✨</div>
-          <h1>荷物チェックをゲーム感覚で</h1>
+          <h1>荷物チェックゲーム</h1>
           <p>入所時に登録 → 退所時にカメラで照合</p>
         </div>
         <div class="home-grid">
@@ -57,17 +57,24 @@
             <label class="photo-button">📷 写真を読み込む<input id="photoInput" type="file" accept="image/*" multiple hidden /></label>
             <div class="size-selector">
               <span>選択範囲</span>
-              <button data-size="0.22">小</button><button class="selected" data-size="0.34">中</button><button data-size="0.48">大</button>
+              <button data-size="0.28">小</button><button class="selected" data-size="0.44">中</button><button data-size="0.62">大</button>
+              <button id="selectionShrink" class="range-nudge" aria-label="選択範囲を少し狭く">−</button>
+              <button id="selectionGrow" class="range-nudge" aria-label="選択範囲を少し広く">＋</button>
             </div>
           </div>
           <div class="photo-stage" id="photoStage">
             <canvas id="registerCanvas"></canvas>
             <div class="photo-hint" id="photoHint">写真を読み込んでください</div>
+            <div class="register-success-pop" id="registerSuccessPop" aria-live="polite">
+              <div class="register-circle">〇</div>
+              <div class="register-success-text" id="registerSuccessText">登録！</div>
+              <div class="register-success-count" id="registerSuccessCount"></div>
+            </div>
           </div>
           <div class="photo-nav hidden" id="photoNav">
             <button id="prevPhoto">← 前</button><span id="photoCounter"></span><button id="nextPhoto">次 →</button>
           </div>
-          <div class="selection-note" id="selectionNote">物品の中央をタップしてください</div>
+          <div class="selection-note" id="selectionNote">物品をタップ → 1本指で移動 / 2本指で拡大・縮小できます</div>
         </div>
 
         <div class="card">
@@ -169,7 +176,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.3は、項目をアプリ内で追加・編集・削除・並び替えできます。退所照合は0.5秒間隔×3回連続一致で、反応速度と誤判定防止を両立します。</p>
+          <p>v0.4は、入所写真の選択範囲を1本指で移動・2本指で拡大縮小できます。物品登録時は大きな〇＋ピコンで登録を確認できます。</p>
         </div>
       </section>
     </main>

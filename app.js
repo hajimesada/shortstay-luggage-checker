@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -19,7 +19,10 @@ const state = {
   photos: [],
   photoIndex: 0,
   selectedRect: null,
-  selectionRatio: 0.34,
+  selectionRatio: 0.44,
+  selectionPointers: new Map(),
+  selectionGesture: null,
+  audioCtx: null,
   undo: [],
   redo: [],
   cameraStream: null,
@@ -64,7 +67,8 @@ function cacheEls(){
    'summaryModal','summaryList','summaryTotal','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
    'successPop','successText','candidateName','scoreText','scoreBar','startCamera','stopCamera','captureInput','manualConfirm','checkList',
    'resetChecks','highThreshold','lowThreshold','highThresholdLabel','lowThresholdLabel','exportBtn','importInput','homeBtn','settingsBtn',
-   'goRegister','goCheck','matchDetails','testLogCount','exportLogBtn','clearLogBtn','categoryManager','newCategoryName','newCategoryEmoji','addCategoryBtn','resetCategoriesBtn'].forEach(id=>els[id]=$(`#${id}`));
+   'goRegister','goCheck','matchDetails','testLogCount','exportLogBtn','clearLogBtn','categoryManager','newCategoryName','newCategoryEmoji','addCategoryBtn','resetCategoriesBtn',
+   'registerSuccessPop','registerSuccessText','registerSuccessCount','selectionShrink','selectionGrow'].forEach(id=>els[id]=$(`#${id}`));
 }
 
 function bindUI(){
@@ -77,13 +81,15 @@ function bindUI(){
   els.photoInput.onchange=loadPhotos;
   els.prevPhoto.onclick=()=>changePhoto(-1);
   els.nextPhoto.onclick=()=>changePhoto(1);
-  els.registerCanvas.addEventListener('pointerdown',selectPoint);
-  $$('.size-selector button').forEach(b=>b.onclick=()=>{
-    $$('.size-selector button').forEach(x=>x.classList.remove('selected'));
+  bindSelectionCanvasGestures();
+  $$('.size-selector button[data-size]').forEach(b=>b.onclick=()=>{
+    $$('.size-selector button[data-size]').forEach(x=>x.classList.remove('selected'));
     b.classList.add('selected');
     state.selectionRatio=Number(b.dataset.size);
     if(state.selectedRect) recalcSelectionFromCenter();
   });
+  els.selectionShrink.onclick=()=>scaleSelection(.86);
+  els.selectionGrow.onclick=()=>scaleSelection(1.16);
   els.customAddBtn.onclick=()=>registerSelection(els.customCategory.value.trim() || 'その他');
   els.undoBtn.onclick=undo;
   els.redoBtn.onclick=redo;
@@ -105,6 +111,7 @@ function bindUI(){
   els.addCategoryBtn.onclick=addCategoryFromSettings;
   els.resetCategoriesBtn.onclick=resetCategories;
   document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopCamera(); });
+  document.addEventListener('pointerdown',()=>ensureAudio(),{once:true,capture:true});
 }
 
 function showScreen(id){
@@ -331,33 +338,108 @@ function drawRegisterPhoto(){
     ctx.fillStyle='#fff';ctx.font='bold 16px sans-serif';ctx.fillText(`${it.category} ${i+1}`,r.x*c.width+7,r.y*c.height+20);
   });
   if(state.selectedRect){
-    const r=state.selectedRect; ctx.strokeStyle='#ffcf4a';ctx.lineWidth=5;ctx.setLineDash([12,7]);ctx.strokeRect(r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height);ctx.setLineDash([]);
+    const r=state.selectedRect; ctx.fillStyle='rgba(255,207,74,.10)';ctx.fillRect(r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height);ctx.strokeStyle='#ffcf4a';ctx.lineWidth=5;ctx.setLineDash([12,7]);ctx.strokeRect(r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height);ctx.setLineDash([]);
+    ctx.fillStyle='#ffcf4a';[[r.x,r.y],[r.x+r.w,r.y],[r.x,r.y+r.h],[r.x+r.w,r.y+r.h]].forEach(([hx,hy])=>{ctx.beginPath();ctx.arc(hx*c.width,hy*c.height,8,0,Math.PI*2);ctx.fill();});
   }
   els.photoHint.classList.add('hidden'); els.photoNav.classList.toggle('hidden',state.photos.length<2);
   els.photoCounter.textContent=`${state.photoIndex+1} / ${state.photos.length}`;
-  els.selectionNote.textContent=state.selectedRect?'選択しました。下から種類をタップしてください':'物品の中央をタップしてください';
+  els.selectionNote.textContent=state.selectedRect?'選択中：1本指で移動 / 2本指で拡大・縮小 → 下の項目をタップ':'物品をタップ → 1本指で移動 / 2本指で拡大・縮小できます';
 }
 
-function selectPoint(ev){
-  if(!state.photos.length) return;
-  const c=els.registerCanvas,rect=c.getBoundingClientRect();
-  const x=(ev.clientX-rect.left)/rect.width, y=(ev.clientY-rect.top)/rect.height;
-  const size=state.selectionRatio;
-  const ratio=c.height/c.width;
-  let w=size, h=size/Math.max(.6,ratio);
-  w=Math.min(.75,w);h=Math.min(.75,h);
-  state.selectedRect={x:clamp(x-w/2,0,1-w),y:clamp(y-h/2,0,1-h),w,h,cx:x,cy:y};
+function canvasPointerPos(ev){
+  const rect=els.registerCanvas.getBoundingClientRect();
+  return {
+    x:clamp((ev.clientX-rect.left)/Math.max(1,rect.width),0,1),
+    y:clamp((ev.clientY-rect.top)/Math.max(1,rect.height),0,1),
+    clientX:ev.clientX,clientY:ev.clientY
+  };
+}
+function pointInSelection(p,r=state.selectedRect){
+  return !!r && p.x>=r.x && p.x<=r.x+r.w && p.y>=r.y && p.y<=r.y+r.h;
+}
+function makeSelectionAt(x,y,size=state.selectionRatio){
+  const c=els.registerCanvas,ratio=c.height/Math.max(1,c.width);
+  let w=clamp(size,.10,.92),h=clamp(size/Math.max(.6,ratio),.10,.92);
+  const cx=clamp(x,w/2,1-w/2),cy=clamp(y,h/2,1-h/2);
+  return {x:cx-w/2,y:cy-h/2,w,h,cx,cy};
+}
+function normalizeRectFromCenter(cx,cy,w,h){
+  w=clamp(w,.08,.96);h=clamp(h,.08,.96);
+  cx=clamp(cx,w/2,1-w/2);cy=clamp(cy,h/2,1-h/2);
+  return {x:cx-w/2,y:cy-h/2,w,h,cx,cy};
+}
+function bindSelectionCanvasGestures(){
+  const c=els.registerCanvas;
+  c.style.touchAction='none';
+  c.addEventListener('pointerdown',selectionPointerDown,{passive:false});
+  c.addEventListener('pointermove',selectionPointerMove,{passive:false});
+  c.addEventListener('pointerup',selectionPointerUp,{passive:false});
+  c.addEventListener('pointercancel',selectionPointerUp,{passive:false});
+}
+function selectionPointerDown(ev){
+  if(!state.photos.length)return;
+  ev.preventDefault();ensureAudio();
+  try{els.registerCanvas.setPointerCapture(ev.pointerId);}catch(e){}
+  const p=canvasPointerPos(ev);state.selectionPointers.set(ev.pointerId,p);
+  if(state.selectionPointers.size===1){
+    if(!pointInSelection(p)){state.selectedRect=makeSelectionAt(p.x,p.y);drawRegisterPhoto();}
+    state.selectionGesture={mode:'drag',start:p,startRect:{...state.selectedRect}};
+  }else if(state.selectionPointers.size>=2){
+    const pts=[...state.selectionPointers.values()].slice(0,2);
+    const mid={x:(pts[0].x+pts[1].x)/2,y:(pts[0].y+pts[1].y)/2};
+    if(!state.selectedRect)state.selectedRect=makeSelectionAt(mid.x,mid.y);
+    state.selectionGesture={
+      mode:'pinch',
+      startDist:Math.max(8,Math.hypot(pts[0].clientX-pts[1].clientX,pts[0].clientY-pts[1].clientY)),
+      startMid:mid,startRect:{...state.selectedRect}
+    };
+  }
+}
+function selectionPointerMove(ev){
+  if(!state.selectionPointers.has(ev.pointerId)||!state.photos.length)return;
+  ev.preventDefault();
+  state.selectionPointers.set(ev.pointerId,canvasPointerPos(ev));
+  const pts=[...state.selectionPointers.values()];
+  if(pts.length>=2){
+    if(!state.selectionGesture||state.selectionGesture.mode!=='pinch'){
+      const mid={x:(pts[0].x+pts[1].x)/2,y:(pts[0].y+pts[1].y)/2};
+      state.selectionGesture={mode:'pinch',startDist:Math.max(8,Math.hypot(pts[0].clientX-pts[1].clientX,pts[0].clientY-pts[1].clientY)),startMid:mid,startRect:{...state.selectedRect}};
+    }
+    const g=state.selectionGesture,curDist=Math.max(8,Math.hypot(pts[0].clientX-pts[1].clientX,pts[0].clientY-pts[1].clientY));
+    const scale=clamp(curDist/g.startDist,.35,3.2),mid={x:(pts[0].x+pts[1].x)/2,y:(pts[0].y+pts[1].y)/2};
+    const sr=g.startRect,cx=sr.cx+(mid.x-g.startMid.x),cy=sr.cy+(mid.y-g.startMid.y);
+    state.selectedRect=normalizeRectFromCenter(cx,cy,sr.w*scale,sr.h*scale);
+    state.selectionRatio=state.selectedRect.w;
+    $$('.size-selector button[data-size]').forEach(x=>x.classList.remove('selected'));
+    drawRegisterPhoto();
+    return;
+  }
+  if(pts.length===1&&state.selectionGesture?.mode==='drag'&&state.selectionGesture.startRect){
+    const g=state.selectionGesture,p=pts[0],sr=g.startRect;
+    state.selectedRect=normalizeRectFromCenter(sr.cx+(p.x-g.start.x),sr.cy+(p.y-g.start.y),sr.w,sr.h);
+    drawRegisterPhoto();
+  }
+}
+function selectionPointerUp(ev){
+  if(state.selectionPointers.has(ev.pointerId)){ev.preventDefault();state.selectionPointers.delete(ev.pointerId);}
+  try{els.registerCanvas.releasePointerCapture(ev.pointerId);}catch(e){}
+  if(state.selectionPointers.size===0)state.selectionGesture=null;
+  else if(state.selectionPointers.size===1)state.selectionGesture=null;
+}
+function scaleSelection(factor){
+  if(!state.selectedRect){toast('先に写真の物品をタップしてください');return;}
+  const r=state.selectedRect;state.selectedRect=normalizeRectFromCenter(r.cx,r.cy,r.w*factor,r.h*factor);
+  state.selectionRatio=state.selectedRect.w;
+  $$('.size-selector button[data-size]').forEach(x=>x.classList.remove('selected'));
   drawRegisterPhoto();
 }
 function recalcSelectionFromCenter(){
   const old=state.selectedRect;if(!old)return;
-  const c=els.registerCanvas,ratio=c.height/c.width,size=state.selectionRatio;
-  let w=Math.min(.75,size),h=Math.min(.75,size/Math.max(.6,ratio));
-  state.selectedRect={x:clamp(old.cx-w/2,0,1-w),y:clamp(old.cy-h/2,0,1-h),w,h,cx:old.cx,cy:old.cy};
-  drawRegisterPhoto();
+  const next=makeSelectionAt(old.cx,old.cy,state.selectionRatio);state.selectedRect=next;drawRegisterPhoto();
 }
 
 async function registerSelection(category){
+  ensureAudio();
   if(!state.photos.length || !state.selectedRect){ toast('先に写真の物品をタップしてください'); return; }
   const name=els.residentName.value.trim(); if(!name){ toast('利用者名・識別名を入力してください'); els.residentName.focus(); return; }
   if(!state.currentSession) newRegistration();
@@ -379,11 +461,11 @@ async function registerSelection(category){
     if(sim>=.94){ groupId=s.groupId||s.id; if(!s.groupId) s.groupId=groupId; break; }
   }
   item.groupId=groupId;
-  state.currentSession.items.push(item); state.redo=[]; state.selectedRect=null;
+  state.currentSession.items.push(item); state.redo=[]; const registeredRect={...state.selectedRect}; state.selectedRect=null;
   els.customCategory.value=''; els.customRow.classList.add('hidden');
   renderHistory();updateUndoRedo();drawRegisterPhoto();
   const count=state.currentSession.items.filter(x=>x.category===category).length;
-  beep(660,.07); toast(`✨ ${category} 登録！  ×${count}`);
+  successChime(); showRegisterSuccess(category,count,registeredRect); toast(`✨ ${category} 登録！  ×${count}`);
 }
 
 function pushUndo(){
@@ -411,6 +493,15 @@ function renderHistory(){
   });
 }
 
+function showRegisterSuccess(category,count,rect){
+  if(!els.registerSuccessPop)return;
+  els.registerSuccessText.textContent=`${category} 登録！`;
+  els.registerSuccessCount.textContent=`${emojiFor(category)} ×${count}`;
+  els.registerSuccessPop.classList.remove('show');void els.registerSuccessPop.offsetWidth;els.registerSuccessPop.classList.add('show');
+  els.photoStage.classList.remove('register-flash');void els.photoStage.offsetWidth;els.photoStage.classList.add('register-flash');
+  clearTimeout(showRegisterSuccess._t);showRegisterSuccess._t=setTimeout(()=>{els.registerSuccessPop.classList.remove('show');els.photoStage.classList.remove('register-flash');},1150);
+}
+
 function showSummary(){
   if(!state.currentSession||!state.currentSession.items.length){toast('物品を1つ以上登録してください');return;}
   if(!els.residentName.value.trim()){toast('利用者名・識別名を入力してください');return;}
@@ -421,6 +512,7 @@ function showSummary(){
 }
 
 async function confirmRegistration(){
+  ensureAudio();
   state.currentSession.name=els.residentName.value.trim();state.currentSession.updatedAt=new Date().toISOString();
   await idbPut(state.currentSession);els.summaryModal.classList.add('hidden');beep(880,.1);setTimeout(()=>beep(1100,.1),110);
   showSuccessOverlay('登録完了！');toast(`🎉 ${state.currentSession.items.length}点 登録しました`);
@@ -443,6 +535,7 @@ function renderCheckList(){
 }
 
 async function startCamera(){
+  ensureAudio();
   if(!els.checkSessionSelect.value){toast('先に対象を選択してください');return;}
   if(!navigator.mediaDevices?.getUserMedia){toast('この環境では連続カメラを利用できません。「1枚撮って照合」を使ってください');return;}
   try{
@@ -526,6 +619,7 @@ async function evaluateDescriptor(desc,singleShot=false){
 }
 
 async function acceptMatch(item,session){
+  ensureAudio();
   // If several visually identical instances are linked, consume one unchecked instance in that group.
   let target=item;
   if(item.groupId){target=session.items.find(x=>!x.checked&&(x.groupId===item.groupId||x.id===item.groupId))||item;}
@@ -755,8 +849,20 @@ function fileToDataURL(f){return new Promise((res,rej)=>{const r=new FileReader(
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function escapeHtml(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function emojiFor(cat){return (CATEGORIES.find(x=>x[0]===cat)||['','📦'])[1] || '📦';}
-function beep(freq=880,dur=.08){
-  try{const AC=window.AudioContext||window.webkitAudioContext,ac=new AC(),o=ac.createOscillator(),g=ac.createGain();o.frequency.value=freq;o.type='sine';g.gain.setValueAtTime(.001,ac.currentTime);g.gain.exponentialRampToValueAtTime(.16,ac.currentTime+.01);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+dur+.02);setTimeout(()=>ac.close(),300);}catch(e){}
+function ensureAudio(){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;
+    if(!state.audioCtx||state.audioCtx.state==='closed')state.audioCtx=new AC();
+    if(state.audioCtx.state==='suspended')state.audioCtx.resume().catch(()=>{});
+    return state.audioCtx;
+  }catch(e){return null;}
 }
+function beep(freq=880,dur=.08){
+  try{
+    const ac=ensureAudio();if(!ac)return;const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();
+    o.frequency.value=freq;o.type='sine';g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(.18,t+.008);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+dur+.02);
+  }catch(e){}
+}
+function successChime(){beep(720,.07);setTimeout(()=>beep(1080,.09),80);}
 
 if(!state.currentSession){ state.currentSession={id:crypto.randomUUID(),name:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),items:[]}; }
