@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#28b7a9" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
+  <title>ShortStay 荷物チェッカー</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button class="icon-btn" id="homeBtn" aria-label="ホーム">⌂</button>
+      <div>
+        <div class="title">📦 ShortStay 荷物チェッカー</div>
+        <div class="subtitle" id="statusText">端末内保存・サーバ送信なし</div>
+      </div>
+      <button class="icon-btn" id="settingsBtn" aria-label="設定">⚙</button>
+    </header>
+
+    <main>
+      <section class="screen active" id="homeScreen">
+        <div class="hero card">
+          <div class="mascot">📦✨</div>
+          <h1>荷物チェックをゲーム感覚で</h1>
+          <p>入所時に登録 → 退所時にカメラで照合</p>
+        </div>
+        <div class="home-grid">
+          <button class="big-action mint" id="goRegister">📥<span>入所時 登録</span><small>写真から複数物品を登録</small></button>
+          <button class="big-action blue" id="goCheck">🔎<span>退所時 確認</span><small>カメラでピコン！照合</small></button>
+        </div>
+        <div class="card">
+          <div class="section-title">登録済み</div>
+          <div id="homeSessions" class="session-list empty">まだ登録はありません</div>
+        </div>
+      </section>
+
+      <section class="screen" id="registerScreen">
+        <div class="stepbar"><b>入所時登録</b><span>写真 → 物品タップ → 種類選択</span></div>
+        <div class="card compact">
+          <label class="field-label">利用者名・識別名</label>
+          <div class="row">
+            <input id="residentName" class="text-input" placeholder="例：山田様 / 203号室" autocomplete="off" />
+            <button id="newSessionBtn" class="small-btn">新規</button>
+          </div>
+          <select id="registerSessionSelect" class="select-input"><option value="">新規登録</option></select>
+        </div>
+
+        <div class="card">
+          <div class="row between wrap gap8">
+            <label class="photo-button">📷 写真を読み込む<input id="photoInput" type="file" accept="image/*" multiple hidden /></label>
+            <div class="size-selector">
+              <span>選択範囲</span>
+              <button data-size="0.22">小</button><button class="selected" data-size="0.34">中</button><button data-size="0.48">大</button>
+            </div>
+          </div>
+          <div class="photo-stage" id="photoStage">
+            <canvas id="registerCanvas"></canvas>
+            <div class="photo-hint" id="photoHint">写真を読み込んでください</div>
+          </div>
+          <div class="photo-nav hidden" id="photoNav">
+            <button id="prevPhoto">← 前</button><span id="photoCounter"></span><button id="nextPhoto">次 →</button>
+          </div>
+          <div class="selection-note" id="selectionNote">物品の中央をタップしてください</div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">何を登録しますか？</div>
+          <div id="categoryGrid" class="category-grid"></div>
+          <div class="row hidden" id="customRow">
+            <input id="customCategory" class="text-input" placeholder="その他の物品名" />
+            <button id="customAddBtn" class="small-btn mint-bg">登録</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row between">
+            <div class="section-title">登録履歴</div>
+            <div class="row gap8"><button id="undoBtn" class="small-btn" disabled>↶ 取り消し</button><button id="redoBtn" class="small-btn" disabled>↷ やり直し</button></div>
+          </div>
+          <div id="registerHistory" class="history empty">まだ物品は登録されていません</div>
+        </div>
+
+        <button id="finishRegister" class="finish-btn">✨ 登録終了・集計へ</button>
+      </section>
+
+      <section class="screen" id="checkScreen">
+        <div class="stepbar"><b>退所時確認</b><span>物品を枠内に入れて照合</span></div>
+        <div class="card compact">
+          <label class="field-label">対象を選択</label>
+          <select id="checkSessionSelect" class="select-input"></select>
+        </div>
+        <div class="camera-card card">
+          <div class="camera-wrap">
+            <video id="cameraVideo" playsinline muted></video>
+            <canvas id="cameraCanvas"></canvas>
+            <div class="scan-frame"><span></span></div>
+            <div class="match-badge" id="matchBadge">カメラ停止中</div>
+            <div class="success-pop" id="successPop"><div class="big-circle">〇</div><div id="successText">一致！</div></div>
+          </div>
+          <div class="row center gap8 wrap">
+            <button id="startCamera" class="camera-btn">📷 カメラ開始</button>
+            <button id="stopCamera" class="small-btn" disabled>停止</button>
+            <label class="small-btn file-capture">1枚撮って照合<input id="captureInput" type="file" accept="image/*" capture="environment" hidden /></label>
+          </div>
+          <div class="score-panel">
+            <div><span>候補</span><b id="candidateName">—</b></div>
+            <div><span>一致度</span><b id="scoreText">—</b></div>
+            <div class="meter"><i id="scoreBar"></i></div>
+            <button id="manualConfirm" class="manual-confirm hidden">この物品で確認 ✓</button>
+          </div>
+          <details class="match-details">
+            <summary>判定の内訳を見る</summary>
+            <div id="matchDetails" class="detail-grid"><span>まだ照合していません</span></div>
+          </details>
+        </div>
+        <div class="card">
+          <div class="row between"><div class="section-title">荷物リスト</div><button id="resetChecks" class="small-btn danger-lite">確認をリセット</button></div>
+          <div id="checkList" class="check-list empty">対象を選択してください</div>
+        </div>
+      </section>
+
+      <section class="screen" id="settingsScreen">
+        <div class="stepbar"><b>設定・バックアップ</b><span>データはこのiPad内に保存</span></div>
+        <div class="card">
+          <div class="section-title">照合しきい値</div>
+          <label class="range-row">自動一致 <b id="highThresholdLabel">80%</b><input id="highThreshold" type="range" min="70" max="95" value="80" /></label>
+          <label class="range-row">候補表示 <b id="lowThresholdLabel">65%</b><input id="lowThreshold" type="range" min="50" max="79" value="65" /></label>
+          <p class="note">最初は80%で自動一致、65〜79%は職員確認にしています。運用データを見ながら調整します。</p>
+        </div>
+        <div class="card">
+          <div class="row between wrap gap8">
+            <div>
+              <div class="section-title">物品項目の編集</div>
+              <p class="note">「バッグ」「上着」などを、このiPadで追加・編集・削除・並び替えできます。名称変更は登録済みデータにも反映します。削除しても登録済み荷物は消えません。</p>
+            </div>
+            <button id="resetCategoriesBtn" class="small-btn">初期状態へ</button>
+          </div>
+          <div id="categoryManager" class="category-manager"></div>
+          <div class="category-add-row">
+            <input id="newCategoryEmoji" class="text-input emoji-input" placeholder="🧢" maxlength="8" />
+            <input id="newCategoryName" class="text-input" placeholder="例：帽子" />
+            <button id="addCategoryBtn" class="small-btn mint-bg">＋追加</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-title">バックアップ</div>
+          <div class="row wrap gap8"><button id="exportBtn" class="small-btn mint-bg">⬇ バックアップを書き出す</button><label class="small-btn">⬆ 復元<input id="importInput" type="file" accept="application/json" hidden /></label></div>
+          <p class="note">写真の切り出し画像・特徴量・数量をJSONにまとめます。利用者情報を含むため、施設の管理ルールに従って保管してください。</p>
+        </div>
+        <div class="card">
+          <div class="row between wrap gap8">
+            <div>
+              <div class="section-title">実機テストログ</div>
+              <p class="note">写真は保存しません。候補カテゴリ・各特徴スコア・最終判定だけを最大300件、端末内に記録します。</p>
+            </div>
+            <span class="chip" id="testLogCount">0件</span>
+          </div>
+          <div class="row wrap gap8">
+            <button id="exportLogBtn" class="small-btn mint-bg">⬇ CSVを書き出す</button>
+            <button id="clearLogBtn" class="small-btn danger-lite">ログを消去</button>
+          </div>
+        </div>
+        <div class="card warning-card">
+          <div class="section-title">この版について</div>
+          <p>v0.3は、項目をアプリ内で追加・編集・削除・並び替えできます。退所照合は0.5秒間隔×3回連続一致で、反応速度と誤判定防止を両立します。</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+    <div class="modal-backdrop hidden" id="summaryModal">
+      <div class="modal card">
+        <div class="party">🎉</div>
+        <h2>今回のお荷物</h2>
+        <div id="summaryList" class="summary-list"></div>
+        <div id="summaryTotal" class="summary-total"></div>
+        <p>これでいいですか？</p>
+        <div class="row center gap8"><button id="backToEdit" class="small-btn">← 修正する</button><button id="confirmRegister" class="ok-btn">OK！</button></div>
+      </div>
+    </div>
+  </div>
+<script src="app.js"></script>
+</body>
+</html>
