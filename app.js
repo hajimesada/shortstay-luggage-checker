@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.4.2';
+const APP_VERSION = '0.4.3';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -57,7 +57,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=042').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=043').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -298,8 +298,21 @@ function populateCheckSelect(){
   if(state.sessions.some(s=>s.id===current)) els.checkSessionSelect.value=current;
 }
 
+function makeId(){
+  try{
+    if(window.crypto && typeof window.crypto.randomUUID==='function') return window.makeId();
+  }catch(e){}
+  return 'id-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+}
+function safeClone(value){
+  try{
+    if(typeof structuredClone==='function') return structuredClone(value);
+  }catch(e){}
+  return JSON.parse(JSON.stringify(value));
+}
+
 function newRegistration(){
-  state.currentSession={id:crypto.randomUUID(),name:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),items:[]};
+  state.currentSession={id:makeId(),name:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),items:[]};
   state.photos=[]; state.photoIndex=0; state.selectedRect=null; state.undo=[]; state.redo=[];
   els.registerSessionSelect.value=''; els.residentName.value=''; els.photoInput.value='';
   clearRegisterCanvas(); renderHistory(); updateUndoRedo();
@@ -311,7 +324,7 @@ function ensureCurrentSession(){
   // 読み込んだ写真や選択範囲を消さずに空の登録セッションだけ作る。
   if(state.currentSession) return state.currentSession;
   state.currentSession={
-    id:crypto.randomUUID(),
+    id:makeId(),
     name:'',
     createdAt:new Date().toISOString(),
     updatedAt:new Date().toISOString(),
@@ -324,7 +337,7 @@ function loadRegistrationSession(){
   const id=els.registerSessionSelect.value;
   if(!id){ newRegistration(); return; }
   const s=state.sessions.find(x=>x.id===id); if(!s) return;
-  state.currentSession=structuredClone(s); state.photos=[]; state.photoIndex=0; state.selectedRect=null; state.undo=[]; state.redo=[];
+  state.currentSession=safeClone(s); state.photos=[]; state.photoIndex=0; state.selectedRect=null; state.undo=[]; state.redo=[];
   els.residentName.value=s.name||''; clearRegisterCanvas(); renderHistory(); updateUndoRedo();
 }
 
@@ -474,13 +487,11 @@ async function registerSelection(category, sourceButton=null){
   if(!state.photos.length){ toast('先に写真を読み込んでください'); return; }
   if(!state.selectedRect){ toast('先に写真の物品をタップして範囲を選んでください'); return; }
 
-  // 利用者名は登録操作を止めない。最後の「登録終了」で入力確認する。
-  // これにより、写真→範囲→項目タップのゲーム操作を途切れさせない。
   const enteredName=els.residentName.value.trim();
   ensureCurrentSession();
   if(enteredName) state.currentSession.name=enteredName;
+  if(!Array.isArray(state.currentSession.items)) state.currentSession.items=[];
 
-  // 非同期処理中に選択範囲や写真番号が変わっても登録対象がずれないようスナップショット化。
   const rect={...state.selectedRect};
   const photoIndex=state.photoIndex;
   const p=state.photos[photoIndex];
@@ -489,43 +500,41 @@ async function registerSelection(category, sourceButton=null){
   state.registerBusy=true;
   setCategoryButtonsDisabled(true);
   if(sourceButton) sourceButton.classList.add('cat-working');
-  els.selectionNote.textContent=`〇 ${category} を登録中…`;
-  toast(`〇 ${category} を登録中…`);
+  els.selectionNote.textContent=`〇 ${category} を登録しています…`;
+  toast(`〇 ${category} を登録しています…`);
 
   try{
-    // iPadでボタン押下の見た目を先に描画してから画像解析へ入る。
-    await nextPaint();
+    // iPadへ一度描画を返してから、軽い特徴だけで先に登録する。
+    await new Promise(resolve=>setTimeout(resolve,0));
 
-    const crop=await cropDataURL(p.img,rect,320,.86);
-    const cropImg=await loadImage(crop);
+    const cropCanvas=makeCropCanvas(p.img,rect,280);
+    const crop=cropCanvas.toDataURL('image/jpeg',.84);
+    const descriptor=extractBasicDescriptor(cropCanvas);
 
-    let descriptor;
-    try{
-      descriptor=extractDescriptor(cropImg);
-    }catch(descErr){
-      console.warn('詳細特徴抽出を簡易特徴へフォールバック',descErr);
-      descriptor=extractBasicDescriptor(cropImg);
-    }
-
-    // ここまで成功してからUndo履歴と本体データを書き換える。
     pushUndo();
     const item={
-      id:crypto.randomUUID(), category, crop, descriptor, checked:false,
-      sourcePhotoIndex:photoIndex, marker:{...rect}, createdAt:new Date().toISOString()
+      id:makeId(), category, crop, descriptor, checked:false,
+      sourcePhotoIndex:photoIndex, marker:{...rect},
+      createdAt:new Date().toISOString(), descriptorLevel:'basic'
     };
 
-    // 見た目がほぼ同じ物でも1個に統合せず、個別インスタンスとして保持。
-    // 類似する同カテゴリだけ同一候補グループを付与し、退所時は数量を1個ずつ減らす。
-    const siblings=state.currentSession.items.filter(x=>x.category===category && x.descriptor);
+    const siblings=(state.currentSession.items||[]).filter(x=>x.category===category && x.descriptor);
     let groupId=null;
     for(const sibling of siblings){
-      const sim=descriptorSimilarity(descriptor,sibling.descriptor);
-      if(sim>=.94){ groupId=sibling.groupId||sibling.id; if(!sibling.groupId) sibling.groupId=groupId; break; }
+      try{
+        const sim=descriptorSimilarity(descriptor,sibling.descriptor);
+        if(sim>=.94){
+          groupId=sibling.groupId||sibling.id;
+          if(!sibling.groupId) sibling.groupId=groupId;
+          break;
+        }
+      }catch(e){}
     }
     item.groupId=groupId;
     state.currentSession.items.push(item);
     state.redo=[];
 
+    // ピコン登録は高精度解析を待たず、ここで即完了させる。
     state.selectedRect=null;
     els.customCategory.value='';
     els.customRow.classList.add('hidden');
@@ -537,15 +546,58 @@ async function registerSelection(category, sourceButton=null){
     successChime();
     showRegisterSuccess(category,count,rect);
     els.selectionNote.textContent=`登録完了：${category} ×${count}　次の物品をタップしてください`;
-    toast(`✨ ${category} 登録！  ×${count}`);
+    toast(`✨ ${category} 登録！ ×${count}`);
+
+    // 縫い目・局所特徴などは成功表示の後で追加する。
+    // 失敗してもbasic特徴が残るので登録は維持する。
+    setTimeout(()=>upgradeItemDescriptorInBackground(item,crop),80);
+
   }catch(err){
     console.error('物品登録エラー',err);
-    toast(`登録できませんでした：${err?.message||'処理エラー'}`);
-    els.selectionNote.textContent='登録エラー：もう一度範囲を選んで項目をタップしてください';
+    const msg=(err && err.message) ? err.message : String(err||'処理エラー');
+    toast(`登録できませんでした：${msg}`);
+    els.selectionNote.textContent=`登録エラー：${msg}`;
   }finally{
     state.registerBusy=false;
     setCategoryButtonsDisabled(false);
     if(sourceButton) sourceButton.classList.remove('cat-working');
+  }
+}
+
+function makeCropCanvas(img,r,maxSize=280){
+  const iw=Number(img?.naturalWidth||img?.width||0);
+  const ih=Number(img?.naturalHeight||img?.height||0);
+  if(!iw||!ih) throw new Error('写真サイズを取得できません');
+
+  const rx=clamp(Number(r.x)||0,0,.999);
+  const ry=clamp(Number(r.y)||0,0,.999);
+  const rw=clamp(Number(r.w)||.2,.01,1-rx);
+  const rh=clamp(Number(r.h)||.2,.01,1-ry);
+
+  const sx=Math.floor(rx*iw), sy=Math.floor(ry*ih);
+  const sw=Math.max(2,Math.floor(rw*iw)), sh=Math.max(2,Math.floor(rh*ih));
+  const scale=Math.min(maxSize/sw,maxSize/sh,1.5);
+
+  const c=document.createElement('canvas');
+  c.width=Math.max(2,Math.round(sw*scale));
+  c.height=Math.max(2,Math.round(sh*scale));
+  const ctx=c.getContext('2d',{alpha:false});
+  if(!ctx) throw new Error('画像処理を開始できません');
+  ctx.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
+  return c;
+}
+
+async function upgradeItemDescriptorInBackground(item,crop){
+  try{
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const cropImg=await loadImage(crop);
+    const detailed=extractDescriptor(cropImg);
+    const live=(state.currentSession?.items||[]).find(x=>x.id===item.id);
+    if(!live || !detailed) return;
+    live.descriptor=detailed;
+    live.descriptorLevel='detailed';
+  }catch(err){
+    console.warn('高精度特徴の追加はスキップしました',err);
   }
 }
 
@@ -591,15 +643,15 @@ function extractBasicDescriptor(img){
 
 function pushUndo(){
   if(!state.currentSession) return;
-  state.undo.push(structuredClone(state.currentSession.items)); if(state.undo.length>30) state.undo.shift();
+  state.undo.push(safeClone(state.currentSession.items)); if(state.undo.length>30) state.undo.shift();
 }
 function undo(){
   if(!state.undo.length||!state.currentSession)return;
-  state.redo.push(structuredClone(state.currentSession.items)); state.currentSession.items=state.undo.pop(); renderHistory();updateUndoRedo();drawRegisterPhoto();toast('1つ前に戻しました');
+  state.redo.push(safeClone(state.currentSession.items)); state.currentSession.items=state.undo.pop(); renderHistory();updateUndoRedo();drawRegisterPhoto();toast('1つ前に戻しました');
 }
 function redo(){
   if(!state.redo.length||!state.currentSession)return;
-  state.undo.push(structuredClone(state.currentSession.items)); state.currentSession.items=state.redo.pop(); renderHistory();updateUndoRedo();drawRegisterPhoto();toast('やり直しました');
+  state.undo.push(safeClone(state.currentSession.items)); state.currentSession.items=state.redo.pop(); renderHistory();updateUndoRedo();drawRegisterPhoto();toast('やり直しました');
 }
 function updateUndoRedo(){ els.undoBtn.disabled=!state.undo.length;els.redoBtn.disabled=!state.redo.length; }
 function renderHistory(){
@@ -989,4 +1041,4 @@ function beep(freq=880,dur=.08){
 }
 function successChime(){beep(720,.07);setTimeout(()=>beep(1080,.09),80);}
 
-if(!state.currentSession){ state.currentSession={id:crypto.randomUUID(),name:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),items:[]}; }
+if(!state.currentSession){ state.currentSession={id:makeId(),name:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),items:[]}; }
