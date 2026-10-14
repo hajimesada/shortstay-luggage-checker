@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -35,6 +35,8 @@ const state = {
   lastMatchDetail: null,
   lastLogAt: 0,
   testLogs: [],
+  registerBusy: false,
+  lastCategoryActivation: 0,
   highThreshold: Number(localStorage.getItem('highThreshold') || 80) / 100,
   lowThreshold: Number(localStorage.getItem('lowThreshold') || 65) / 100,
 };
@@ -55,7 +57,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=042').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -212,14 +214,28 @@ function buildCategories(){
   els.categoryGrid.innerHTML='';
   for(const [name,emoji] of CATEGORIES){
     const b=document.createElement('button');
+    b.type='button';
     b.className='cat-btn';
+    b.dataset.category=name;
     b.innerHTML=`<span class="emoji">${emoji}</span>${name}`;
-    b.onclick=()=>{
+
+    // iPad Safari / PWA で click が取りこぼされるケースも考慮し、
+    // pointerup と click の両方から同じ処理へ入れる。二重発火は時間ガードで防ぐ。
+    const activate=(ev)=>{
+      const now=Date.now();
+      if(now-state.lastCategoryActivation<420)return;
+      state.lastCategoryActivation=now;
+      b.classList.add('cat-tapped');
+      setTimeout(()=>b.classList.remove('cat-tapped'),260);
       if(name==='その他'){
         els.customRow.classList.toggle('hidden');
         if(!els.customRow.classList.contains('hidden')) els.customCategory.focus();
-      }else registerSelection(name);
+      }else{
+        registerSelection(name,b);
+      }
     };
+    b.addEventListener('pointerup',activate);
+    b.addEventListener('click',activate);
     els.categoryGrid.appendChild(b);
   }
 }
@@ -452,58 +468,125 @@ function recalcSelectionFromCenter(){
   const next=makeSelectionAt(old.cx,old.cy,state.selectionRatio);state.selectedRect=next;drawRegisterPhoto();
 }
 
-async function registerSelection(category){
+async function registerSelection(category, sourceButton=null){
   ensureAudio();
-  if(!state.photos.length || !state.selectedRect){ toast('先に写真の物品をタップしてください'); return; }
-  const name=els.residentName.value.trim();
-  if(!name){ toast('利用者名・識別名を入力してください'); els.residentName.focus(); return; }
+  if(state.registerBusy){ toast('登録処理中です'); return; }
+  if(!state.photos.length){ toast('先に写真を読み込んでください'); return; }
+  if(!state.selectedRect){ toast('先に写真の物品をタップして範囲を選んでください'); return; }
 
-  // 重要: newRegistration() は写真・選択範囲も初期化するため、
-  // 初回のカテゴリタップ時には呼ばない。セッションだけ作成する。
+  // 利用者名は登録操作を止めない。最後の「登録終了」で入力確認する。
+  // これにより、写真→範囲→項目タップのゲーム操作を途切れさせない。
+  const enteredName=els.residentName.value.trim();
   ensureCurrentSession();
-  state.currentSession.name=name;
+  if(enteredName) state.currentSession.name=enteredName;
+
+  // 非同期処理中に選択範囲や写真番号が変わっても登録対象がずれないようスナップショット化。
+  const rect={...state.selectedRect};
+  const photoIndex=state.photoIndex;
+  const p=state.photos[photoIndex];
+  if(!p || !p.img){ toast('選択中の写真を取得できませんでした'); return; }
+
+  state.registerBusy=true;
+  setCategoryButtonsDisabled(true);
+  if(sourceButton) sourceButton.classList.add('cat-working');
+  els.selectionNote.textContent=`〇 ${category} を登録中…`;
+  toast(`〇 ${category} を登録中…`);
 
   try{
-    pushUndo();
-    const p=state.photos[state.photoIndex];
-    if(!p || !p.img) throw new Error('選択中の写真を取得できませんでした');
+    // iPadでボタン押下の見た目を先に描画してから画像解析へ入る。
+    await nextPaint();
 
-    const crop=await cropDataURL(p.img,state.selectedRect,320,.86);
+    const crop=await cropDataURL(p.img,rect,320,.86);
     const cropImg=await loadImage(crop);
-    const descriptor=extractDescriptor(cropImg);
+
+    let descriptor;
+    try{
+      descriptor=extractDescriptor(cropImg);
+    }catch(descErr){
+      console.warn('詳細特徴抽出を簡易特徴へフォールバック',descErr);
+      descriptor=extractBasicDescriptor(cropImg);
+    }
+
+    // ここまで成功してからUndo履歴と本体データを書き換える。
+    pushUndo();
     const item={
       id:crypto.randomUUID(), category, crop, descriptor, checked:false,
-      sourcePhotoIndex:state.photoIndex, marker:{...state.selectedRect}, createdAt:new Date().toISOString()
+      sourcePhotoIndex:photoIndex, marker:{...rect}, createdAt:new Date().toISOString()
     };
 
-    // Same-category near-identical registrations are linked as a quantity group, but kept as separate instances.
-    const siblings=state.currentSession.items.filter(x=>x.category===category);
+    // 見た目がほぼ同じ物でも1個に統合せず、個別インスタンスとして保持。
+    // 類似する同カテゴリだけ同一候補グループを付与し、退所時は数量を1個ずつ減らす。
+    const siblings=state.currentSession.items.filter(x=>x.category===category && x.descriptor);
     let groupId=null;
-    for(const s of siblings){
-      const sim=descriptorSimilarity(descriptor,s.descriptor);
-      if(sim>=.94){ groupId=s.groupId||s.id; if(!s.groupId) s.groupId=groupId; break; }
+    for(const sibling of siblings){
+      const sim=descriptorSimilarity(descriptor,sibling.descriptor);
+      if(sim>=.94){ groupId=sibling.groupId||sibling.id; if(!sibling.groupId) sibling.groupId=groupId; break; }
     }
     item.groupId=groupId;
     state.currentSession.items.push(item);
     state.redo=[];
-    const registeredRect={...state.selectedRect};
+
     state.selectedRect=null;
     els.customCategory.value='';
     els.customRow.classList.add('hidden');
     renderHistory();
     updateUndoRedo();
     drawRegisterPhoto();
+
     const count=state.currentSession.items.filter(x=>x.category===category).length;
     successChime();
-    showRegisterSuccess(category,count,registeredRect);
+    showRegisterSuccess(category,count,rect);
+    els.selectionNote.textContent=`登録完了：${category} ×${count}　次の物品をタップしてください`;
     toast(`✨ ${category} 登録！  ×${count}`);
   }catch(err){
     console.error('物品登録エラー',err);
-    // pushUndoした直後に失敗した場合、不要なUndo履歴を戻す
-    if(state.undo.length) state.undo.pop();
-    updateUndoRedo();
     toast(`登録できませんでした：${err?.message||'処理エラー'}`);
+    els.selectionNote.textContent='登録エラー：もう一度範囲を選んで項目をタップしてください';
+  }finally{
+    state.registerBusy=false;
+    setCategoryButtonsDisabled(false);
+    if(sourceButton) sourceButton.classList.remove('cat-working');
   }
+}
+
+function setCategoryButtonsDisabled(disabled){
+  $$('.cat-btn').forEach(b=>{b.disabled=!!disabled;});
+  if(els.customAddBtn) els.customAddBtn.disabled=!!disabled;
+}
+
+function nextPaint(){
+  return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+}
+
+function extractBasicDescriptor(img){
+  const c=document.createElement('canvas');
+  c.width=64;c.height=64;
+  const ctx=c.getContext('2d',{willReadFrequently:true});
+  drawCover(ctx,img,64,64);
+  const d=ctx.getImageData(0,0,64,64).data;
+  const color=new Array(12*4*4).fill(0), gray=new Float32Array(64*64);
+  let mean=0;
+  for(let y=0;y<64;y++)for(let x=0;x<64;x++){
+    const i=(y*64+x)*4,r=d[i],g=d[i+1],b=d[i+2];
+    const [h,s,v]=rgbToHsv(r,g,b);
+    const hi=Math.min(11,Math.floor(h*12)),si=Math.min(3,Math.floor(s*4)),vi=Math.min(3,Math.floor(v*4));
+    color[(hi*4+si)*4+vi]++;
+    const gr=.299*r+.587*g+.114*b; gray[y*64+x]=gr; mean+=gr;
+  }
+  normalizeHist(color);mean/=gray.length;
+  const lbp=new Array(32).fill(0);
+  for(let y=2;y<62;y+=2)for(let x=2;x<62;x+=2){
+    const c0=gray[y*64+x],n=[gray[(y-1)*64+x],gray[(y-1)*64+x+1],gray[y*64+x+1],gray[(y+1)*64+x+1],gray[(y+1)*64+x],gray[(y+1)*64+x-1],gray[y*64+x-1],gray[(y-1)*64+x-1]];
+    let code=0;n.forEach((v,k)=>{if(v>=c0)code|=(1<<k);});lbp[Math.floor(code/8)]++;
+  }
+  normalizeHist(lbp);
+  const edge=new Array(12).fill(0);let edgeEnergy=0;
+  for(let y=1;y<63;y+=2)for(let x=1;x<63;x+=2){
+    const gx=gray[y*64+x+1]-gray[y*64+x-1],gy=gray[(y+1)*64+x]-gray[(y-1)*64+x];const mag=Math.hypot(gx,gy);if(mag<12)continue;
+    let a=Math.atan2(gy,gx);if(a<0)a+=Math.PI;if(a>=Math.PI)a-=Math.PI;const bin=Math.min(11,Math.floor(a/Math.PI*12));edge[bin]+=mag;edgeEnergy+=mag;
+  }
+  normalizeHist(edge);
+  return {color,lbp,edge,dhash:makeDHash(c),brief:[],mean:Math.round(mean*10)/10,edgeEnergy:Math.round(edgeEnergy),fallback:true};
 }
 
 function pushUndo(){
@@ -542,6 +625,9 @@ function showRegisterSuccess(category,count,rect){
 
 function showSummary(){
   if(!state.currentSession||!state.currentSession.items.length){toast('物品を1つ以上登録してください');return;}
+  const finalName=els.residentName.value.trim();
+  if(!finalName){toast('最後に利用者名・識別名を入力してください');els.residentName.focus();return;}
+  state.currentSession.name=finalName;
   if(!els.residentName.value.trim()){toast('利用者名・識別名を入力してください');return;}
   const counts=countCategories(state.currentSession.items);els.summaryList.innerHTML='';
   Object.entries(counts).forEach(([k,v])=>{const d=document.createElement('div');d.className='summary-row';d.innerHTML=`<span>${emojiFor(k)} ${escapeHtml(k)}</span><b>×${v}</b>`;els.summaryList.appendChild(d);});
