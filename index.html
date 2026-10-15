@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=054" />
+  <link rel="manifest" href="manifest.webmanifest?v=055" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=054" />
+  <link rel="stylesheet" href="style.css?v=055" />
 </head>
 <body>
   <div id="app">
@@ -129,7 +129,7 @@
             <div class="success-pop" id="successPop"><div class="big-circle">〇</div><div id="successText">一致！</div></div>
           </div>
 
-          <!-- v0.5.4: 精度強化 + 大きい登録画像で見比べやすく -->
+          <!-- v0.5.5: 候補固定 + 複数候補を職員が選択 -->
           <div class="match-question waiting match-question-dock" id="matchQuestion" aria-live="polite">
             <button type="button" class="match-question-thumb hidden" id="matchQuestionThumbBtn" aria-label="候補の登録画像を拡大表示">
               <img id="matchQuestionThumb" alt="候補の入所時登録画像" />
@@ -142,7 +142,11 @@
               </div>
               <div class="match-question-sub" id="matchQuestionSub">候補が見つかるとここに表示します</div>
             </div>
-            <button type="button" id="manualConfirm" class="manual-confirm camera-inline-confirm hidden">はい ✓</button>
+            <div class="match-candidate-list hidden" id="matchCandidateList" aria-live="polite"></div>
+            <div class="match-question-actions" id="matchQuestionActions">
+              <button type="button" id="manualConfirm" class="manual-confirm camera-inline-confirm hidden">はい ✓</button>
+              <button type="button" id="rejectCandidate" class="reject-candidate hidden">いいえ</button>
+            </div>
           </div>
           <div class="row center gap8 wrap">
             <button id="startCamera" class="camera-btn">📷 カメラ開始</button>
@@ -169,9 +173,9 @@
         <div class="stepbar"><b>設定・バックアップ</b><span>データはこのiPad内に保存</span></div>
         <div class="card">
           <div class="section-title">照合しきい値</div>
-          <label class="range-row">自動一致 <b id="highThresholdLabel">85%</b><input id="highThreshold" type="range" min="85" max="95" value="85" /></label>
-          <label class="range-row">候補表示 <b id="lowThresholdLabel">72%</b><input id="lowThreshold" type="range" min="72" max="84" value="72" /></label>
-          <p class="note">v0.5.4は色一致60%以上を必須にし、候補72%以上・自動一致85%以上に強化しています。条件未達は「一致候補なし」と表示します。</p>
+          <label class="range-row">高一致表示 <b id="highThresholdLabel">80%</b><input id="highThreshold" type="range" min="80" max="95" value="80" /></label>
+          <label class="range-row">候補表示 <b id="lowThresholdLabel">50%</b><input id="lowThreshold" type="range" min="50" max="79" value="50" /></label>
+          <p class="note">v0.5.5は色一致54%以上・総合50%以上で候補を表示します。一度候補が出たら消さずに固定し、「はい」で確定、「いいえ」で照合へ戻ります。候補が複数ある場合は登録画像を並べて職員が選択します。自動確定はしません。</p>
         </div>
         <div class="card">
           <div class="row between wrap gap8">
@@ -208,7 +212,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.5.4は、色一致60%以上を必須化し、赤・青・ピンク・白黒などの明確な色違いを強く除外します。柄物は色構成＋生地パターン、タグ・ファスナー・ロゴ等は局所特徴として比較します。照合時の登録画像も大きく表示して見比べやすくしました。メーカー文字そのものを読むOCRはまだ未搭載です。</p>
+          <p>v0.5.5は「完全自動認証」ではなく「候補提示＋職員確認」を優先します。色54%以上・総合50%以上で候補を出し、一度出た候補は固定表示。「はい」で照合確定、「いいえ」で戻ります。複数候補は登録画像・一致度・色一致度を並べて選べます。OCRはまだ未搭載です。</p>
         </div>
       </section>
     </main>
@@ -245,6 +249,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=054"></script>
+<script src="app.js?v=055"></script>
 </body>
 </html>

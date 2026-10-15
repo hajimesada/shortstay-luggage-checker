@@ -1,7 +1,7 @@
 'use strict';
 
-const APP_VERSION = '0.5.4';
-const MATCH_POLICY = Object.freeze({ minColor:0.60, minCandidate:0.72, minAuto:0.85, minMargin:0.05 });
+const APP_VERSION = '0.5.5';
+const MATCH_POLICY = Object.freeze({ minColor:0.54, minCandidate:0.50, minAuto:0.80, minMargin:0.03, maxCandidates:4 });
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -39,8 +39,11 @@ const state = {
   testLogs: [],
   registerBusy: false,
   lastCategoryActivation: 0,
-  highThreshold: Math.max(MATCH_POLICY.minAuto, Number(localStorage.getItem('highThreshold') || 85) / 100),
-  lowThreshold: Math.max(MATCH_POLICY.minCandidate, Number(localStorage.getItem('lowThreshold') || 72) / 100),
+  promptLocked: false,
+  promptCandidates: [],
+  rejectCooldownUntil: 0,
+  highThreshold: Math.max(MATCH_POLICY.minAuto, Number(localStorage.getItem('highThreshold055') || 80) / 100),
+  lowThreshold: Math.max(MATCH_POLICY.minCandidate, Number(localStorage.getItem('lowThreshold055') || 50) / 100),
   // バックグラウンド画像認識キュー管理
   bgQueue: [],
   bgTotal: 0,
@@ -68,7 +71,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=054').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=055').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -78,7 +81,7 @@ function cacheEls(){
    'registerSessionSelect','photoInput','photoStage','registerCanvas','photoHint','photoNav','prevPhoto','nextPhoto','photoCounter',
    'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','finishRegister',
    'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
-   'successPop','successText','candidateName','scoreText','scoreBar','matchQuestion','matchQuestionEmoji','matchQuestionMain','matchQuestionSub','matchQuestionThumbBtn','matchQuestionThumb','startCamera','stopCamera','captureInput','manualConfirm','checkList',
+   'successPop','successText','candidateName','scoreText','scoreBar','matchQuestion','matchQuestionEmoji','matchQuestionMain','matchQuestionSub','matchQuestionThumbBtn','matchQuestionThumb','matchCandidateList','matchQuestionActions','startCamera','stopCamera','captureInput','manualConfirm','rejectCandidate','checkList',
    'itemPreviewModal','itemPreviewImage','itemPreviewTitle','itemPreviewMeta','itemPreviewClose','itemPreviewCaption',
    'resetChecks','highThreshold','lowThreshold','highThresholdLabel','lowThresholdLabel','exportBtn','importInput','homeBtn','settingsBtn',
    'goRegister','goCheck','matchDetails','testLogCount','exportLogBtn','clearLogBtn','categoryManager','newCategoryName','newCategoryEmoji','addCategoryBtn','resetCategoriesBtn',
@@ -111,11 +114,12 @@ function bindUI(){
   els.finishRegister.onclick=showSummary;
   els.backToEdit.onclick=()=>els.summaryModal.classList.add('hidden');
   els.confirmRegister.onclick=confirmRegistration;
-  els.checkSessionSelect.onchange=renderCheckList;
+  els.checkSessionSelect.onchange=()=>{ resetCandidatePrompt(false); renderCheckList(); };
   els.startCamera.onclick=startCamera;
   els.stopCamera.onclick=stopCamera;
   els.captureInput.onchange=matchCapturedPhoto;
   els.manualConfirm.onclick=manualConfirm;
+  els.rejectCandidate.onclick=rejectCurrentCandidates;
   els.matchQuestionThumbBtn.onclick=openCurrentCandidatePreview;
   els.resetChecks.onclick=resetChecks;
   els.itemPreviewClose.onclick=closeItemPreview;
@@ -1047,6 +1051,7 @@ async function startCamera(){
     await els.cameraVideo.play();
     els.startCamera.disabled=true;els.stopCamera.disabled=false;els.matchBadge.textContent='照合中…';
     state.lockUntilClear=false;state.clearFrames=0;state.consecutiveHits=0;state.consecutiveKey=null;state.currentCandidate=null;state.lastMatchDetail=null;
+    state.promptLocked=false;state.promptCandidates=[];state.rejectCooldownUntil=0;
     renderMatchDetails(null);setMatchQuestion();
     state.scanTimer=setInterval(scanVideoFrame,500);
   }catch(e){
@@ -1079,7 +1084,7 @@ function stopCamera(){
 }
 
 async function scanVideoFrame(){
-  if(state.scanBusy) return;
+  if(state.scanBusy || state.promptLocked || Date.now()<state.rejectCooldownUntil) return;
   const v=els.cameraVideo;if(!v.videoWidth||!v.videoHeight)return;
   state.scanBusy=true;
   try{
@@ -1133,14 +1138,36 @@ function openCurrentCandidatePreview(){
   openItemPreview(session.id,item.id,info.no,info.total);
 }
 
+function hideCandidateChoices(){
+  if(els.matchCandidateList){
+    els.matchCandidateList.innerHTML='';
+    els.matchCandidateList.classList.add('hidden');
+  }
+  els.matchQuestion?.classList.remove('multiple');
+}
+
+function resetCandidatePrompt(showWaiting=true){
+  state.promptLocked=false;
+  state.promptCandidates=[];
+  state.currentCandidate=null;
+  state.consecutiveHits=0;
+  state.consecutiveKey=null;
+  hideCandidateChoices();
+  els.manualConfirm?.classList.add('hidden');
+  els.rejectCandidate?.classList.add('hidden');
+  if(showWaiting) setMatchQuestion();
+}
+
 function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}={}){
   if(!els.matchQuestion)return;
   const session=state.sessions.find(x=>x.id===els.checkSessionSelect.value);
   if(item && !category) category=item.category||'';
   const info=item?candidateDisplayInfo(session,item):{no:1,total:1,label:category};
 
+  hideCandidateChoices();
   els.matchQuestion.classList.remove('waiting','possible','confident','locked','complete','nomatch');
   els.matchQuestion.classList.add(mode);
+  els.rejectCandidate?.classList.add('hidden');
 
   if(mode==='complete'){
     setMatchQuestionThumb(null);
@@ -1163,7 +1190,7 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
     els.manualConfirm.classList.add('hidden');
     els.matchQuestionEmoji.textContent='✕';
     els.matchQuestionMain.textContent='一致候補なし';
-    els.matchQuestionSub.textContent='色・柄・局所特徴が基準に届いていません。別の物品を枠に入れてください';
+    els.matchQuestionSub.textContent='総合50%以上・色54%以上の候補がありません';
     return;
   }
   if(!category){
@@ -1171,7 +1198,7 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
     els.manualConfirm.classList.add('hidden');
     els.matchQuestionEmoji.textContent='🔎';
     els.matchQuestionMain.textContent='物品を枠に入れてください';
-    els.matchQuestionSub.textContent='候補が見つかると、登録画像と「はい」がここに出ます';
+    els.matchQuestionSub.textContent='50%以上の候補が見つかると、そのまま固定表示します';
     return;
   }
 
@@ -1180,14 +1207,81 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
   els.matchQuestionEmoji.textContent=categoryEmoji(category);
   els.matchQuestionMain.textContent=`${info.label}ですか？`;
   if(mode==='confident'){
-    els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 自動確認 ${Math.max(1,hits)}/3`;
+    els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 高一致候補です。職員が確認してください`;
   }else{
     els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 登録画像と現物を確認してください`;
   }
+  els.manualConfirm.textContent='はい ✓';
+  els.manualConfirm.setAttribute('aria-label',`はい、${info.label}です`);
+  els.manualConfirm.classList.remove('hidden');
+  els.rejectCandidate?.classList.remove('hidden');
+}
+
+function renderCandidateChoices(session,candidates){
+  if(!els.matchQuestion || !els.matchCandidateList)return;
+  hideCandidateChoices();
+  els.matchQuestion.classList.remove('waiting','possible','confident','locked','complete','nomatch');
+  els.matchQuestion.classList.add('possible','multiple');
+  setMatchQuestionThumb(null);
+  els.matchQuestionEmoji.textContent='🧐';
+  els.matchQuestionMain.textContent='これですか？';
+  els.matchQuestionSub.textContent=`候補 ${candidates.length}件。登録画像を見比べて選んでください`;
+  els.manualConfirm.classList.add('hidden');
+  els.rejectCandidate.classList.remove('hidden');
+  els.rejectCandidate.textContent='どれでもない / いいえ';
+  els.matchCandidateList.classList.remove('hidden');
+  els.matchCandidateList.innerHTML='';
+
+  for(const c of candidates){
+    const info=candidateDisplayInfo(session,c.item);
+    const row=document.createElement('div');
+    row.className='match-candidate-card';
+
+    const imgBtn=document.createElement('button');
+    imgBtn.type='button';imgBtn.className='match-candidate-thumb';imgBtn.setAttribute('aria-label',`${info.label}の登録画像を拡大`);
+    if(c.item.crop){
+      const img=document.createElement('img');img.src=c.item.crop;img.alt=`${info.label}の登録画像`;imgBtn.appendChild(img);
+    }else{
+      imgBtn.textContent='画像なし';
+    }
+    imgBtn.onclick=()=>openItemPreview(session.id,c.item.id,info.no,info.total);
+
+    const txt=document.createElement('div');txt.className='match-candidate-text';
+    const title=document.createElement('b');title.textContent=`${categoryEmoji(c.item.category)} ${info.label}`;
+    const meta=document.createElement('span');meta.textContent=`一致度 ${Math.round(c.score*100)}% ・ 色 ${Math.round((c.detail?.color||0)*100)}%`;
+    txt.append(title,meta);
+
+    const yes=document.createElement('button');yes.type='button';yes.className='match-candidate-yes';yes.textContent='はい ✓';
+    yes.onclick=async()=>{
+      if(!state.promptLocked)return;
+      state.currentCandidate=c;state.lastMatchDetail=c.detail||null;
+      await acceptMatch(c.item,session);
+    };
+    row.append(imgBtn,txt,yes);
+    els.matchCandidateList.appendChild(row);
+  }
+}
+
+function rejectCurrentCandidates(){
+  if(!state.promptLocked){setMatchQuestion();return;}
+  state.promptLocked=false;
+  state.promptCandidates=[];
+  state.currentCandidate=null;
+  state.lastMatchDetail=null;
+  state.rejectCooldownUntil=Date.now()+900;
+  hideCandidateChoices();
+  els.manualConfirm.classList.add('hidden');
+  els.rejectCandidate.classList.add('hidden');
+  els.candidateName.textContent='—';els.scoreText.textContent='—';els.scoreBar.style.width='0%';
+  renderMatchDetails(null);
+  setMatchQuestion();
+  els.matchBadge.textContent='照合中…';
+  toast('候補を戻しました');
 }
 
 async function evaluateDescriptor(desc,singleShot=false){
   const s=state.sessions.find(x=>x.id===els.checkSessionSelect.value);if(!s)return;
+  if(state.promptLocked)return; // 一度候補を出したら「はい / いいえ」まで固定
   const pending=s.items.filter(x=>!x.checked);
   if(!pending.length){state.currentCandidate=null;setMatchQuestion({mode:'complete'});showSuccessOverlay('全品チェック完了！ 🎉');return;}
 
@@ -1196,36 +1290,34 @@ async function evaluateDescriptor(desc,singleShot=false){
     return {item:x,score:detail.score,detail};
   }).sort((a,b)=>b.score-a.score);
 
-  // v0.5.4: 色60%以上 + 明確な色矛盾なし + 候補72%以上を満たした物だけ候補にする。
-  // 「登録済みの中で最も近い」という理由だけでは候補表示しない。
+  // v0.5.5: 色54%以上 + 総合50%以上なら「職員確認用の候補」として提示する。
+  // 自動確定はせず、一度表示した候補は「はい / いいえ」まで固定する。
   const eligible=allScored.filter(x=>x.detail.colorPass && x.score>=Math.max(state.lowThreshold,MATCH_POLICY.minCandidate));
-  const best=eligible[0]||null;
-  const second=eligible[1]||null;
+  const shown=eligible.slice(0,MATCH_POLICY.maxCandidates);
+  const best=shown[0]||null;
+  const second=shown[1]||null;
   const rawBest=allScored[0]||null;
 
-  state.currentCandidate=best;
   state.lastMatchDetail=(best||rawBest)?.detail||null;
   renderMatchDetails(state.lastMatchDetail, second?.score||0);
-
-  const score=best?.score||0;
-  els.candidateName.textContent=best?candidateDisplayInfo(s,best.item).label:'候補なし';
-  els.scoreText.textContent=best?`${Math.round(score*100)}%`:'—';
-  els.scoreBar.style.width=`${best?Math.round(score*100):0}%`;
 
   if(state.lockUntilClear){
     setMatchQuestion({mode:'locked'});
     const clearScore=rawBest?.score||0;
     if(clearScore<.53){state.clearFrames++;els.matchBadge.textContent=`次の物品をどうぞ… ${state.clearFrames}/2`;}
     else{state.clearFrames=0;els.matchBadge.textContent='同じ物品を検出中：いったん枠から外してください';}
-    if(state.clearFrames>=2){state.lockUntilClear=false;state.clearFrames=0;state.consecutiveHits=0;state.consecutiveKey=null;els.matchBadge.textContent='照合中…';setMatchQuestion();}
+    if(state.clearFrames>=2){state.lockUntilClear=false;state.clearFrames=0;els.matchBadge.textContent='照合中…';setMatchQuestion();}
     return;
   }
 
   const now=Date.now();
   if(!best){
-    state.consecutiveHits=0;state.consecutiveKey=null;els.manualConfirm.classList.add('hidden');
+    state.currentCandidate=null;
+    els.manualConfirm.classList.add('hidden');
+    els.rejectCandidate.classList.add('hidden');
     setMatchQuestion({mode:'nomatch'});
-    const why=rawBest?.detail?.colorPass===false ? `色 ${Math.round((rawBest.detail.color||0)*100)}% < 60%` : '基準未達';
+    const why=rawBest?.detail?.colorPass===false ? `色 ${Math.round((rawBest.detail.color||0)*100)}% < 54%` : `総合 ${Math.round((rawBest?.score||0)*100)}% < 50%`;
+    els.candidateName.textContent='候補なし';els.scoreText.textContent='—';els.scoreBar.style.width='0%';
     els.matchBadge.textContent=`一致候補なし（${why}）`;
     if(singleShot || now-state.lastLogAt>=2200){
       state.lastLogAt=now;
@@ -1237,36 +1329,31 @@ async function evaluateDescriptor(desc,singleShot=false){
     return;
   }
 
-  const key=best.item.groupId||best.item.id;
-  const margin=second ? best.score-second.score : .20;
-  const high=score>=Math.max(state.highThreshold,MATCH_POLICY.minAuto);
-  const confident=high && (margin>=MATCH_POLICY.minMargin || !!best.item.groupId || eligible.length===1);
+  state.promptLocked=true;
+  state.promptCandidates=shown;
+  state.currentCandidate=best;
+  const bestInfo=candidateDisplayInfo(s,best.item);
+  els.candidateName.textContent=shown.length>1?`${shown.length}件の候補`:bestInfo.label;
+  els.scoreText.textContent=`${Math.round(best.score*100)}%`;
+  els.scoreBar.style.width=`${Math.round(best.score*100)}%`;
 
-  if(singleShot || now-state.lastLogAt>=2200){
+  if(singleShot || now-state.lastLogAt>=1200){
     state.lastLogAt=now;
     logMatchResult({
-      mode: singleShot?'single':'camera',category:best.item.category,score,
-      secondScore:second?.score||0,margin,detail:best.detail,
-      decision:confident?'auto-candidate':'manual-candidate'
+      mode:singleShot?'single':'camera',category:best.item.category,score:best.score,
+      secondScore:second?.score||0,margin:second?best.score-second.score:.20,detail:best.detail,
+      decision:shown.length>1?'multi-candidate-locked':'candidate-locked'
     });
   }
 
-  const info=candidateDisplayInfo(s,best.item);
-  els.manualConfirm.textContent='はい ✓';
-  els.manualConfirm.setAttribute('aria-label',`はい、${info.label}です`);
-  els.manualConfirm.classList.remove('hidden');
-
-  if(!confident){
-    state.consecutiveHits=0;state.consecutiveKey=null;
-    setMatchQuestion({item:best.item,score,mode:'possible'});
-    els.matchBadge.textContent=`候補：${info.label} ${Math.round(score*100)}%`;
-    return;
+  if(shown.length>1){
+    renderCandidateChoices(s,shown);
+    els.matchBadge.textContent=`候補 ${shown.length}件：職員確認待ち`;
+  }else{
+    const mode=best.score>=Math.max(state.highThreshold,MATCH_POLICY.minAuto)?'confident':'possible';
+    setMatchQuestion({item:best.item,score:best.score,mode});
+    els.matchBadge.textContent=`候補固定：${bestInfo.label} ${Math.round(best.score*100)}%`;
   }
-
-  if(key===state.consecutiveKey) state.consecutiveHits++; else{state.consecutiveKey=key;state.consecutiveHits=1;}
-  setMatchQuestion({item:best.item,score,mode:'confident',hits:state.consecutiveHits});
-  els.matchBadge.textContent=`${info.label} 一致候補 ${state.consecutiveHits}/3`;
-  if(singleShot || state.consecutiveHits>=3) await acceptMatch(best.item,s);
 }
 
 async function acceptMatch(item,session){
@@ -1276,8 +1363,9 @@ async function acceptMatch(item,session){
   target.checked=true;session.updatedAt=new Date().toISOString();await idbPut(session);
   logMatchResult({mode:'accepted',category:target.category,score:state.currentCandidate?.score||0,secondScore:0,margin:0,detail:state.lastMatchDetail,decision:'accepted'});
   const idx=state.sessions.findIndex(x=>x.id===session.id);if(idx>=0)state.sessions[idx]=session;
+  state.promptLocked=false;state.promptCandidates=[];state.rejectCooldownUntil=0;
   state.lockUntilClear=true;state.clearFrames=0;state.consecutiveHits=0;state.consecutiveKey=null;
-  els.manualConfirm.classList.add('hidden');
+  hideCandidateChoices();els.manualConfirm.classList.add('hidden');els.rejectCandidate.classList.add('hidden');
   setMatchQuestion({mode:'locked'});beep(900,.08);setTimeout(()=>beep(1250,.08),90);showSuccessOverlay(`${target.category} 確認！`);renderCheckList();
 }
 
@@ -1299,8 +1387,8 @@ function showSuccessOverlay(text){
 function loadSettings(){
   state.highThreshold=Math.max(state.highThreshold,MATCH_POLICY.minAuto);
   state.lowThreshold=Math.max(state.lowThreshold,MATCH_POLICY.minCandidate);
-  localStorage.setItem('highThreshold',Math.round(state.highThreshold*100));
-  localStorage.setItem('lowThreshold',Math.round(state.lowThreshold*100));
+  localStorage.setItem('highThreshold055',Math.round(state.highThreshold*100));
+  localStorage.setItem('lowThreshold055',Math.round(state.lowThreshold*100));
   els.highThreshold.value=Math.round(state.highThreshold*100);els.lowThreshold.value=Math.round(state.lowThreshold*100);updateThresholdLabels();
 }
 function saveThresholds(){
@@ -1308,7 +1396,7 @@ function saveThresholds(){
   let lo=Math.max(Number(els.lowThreshold.value),Math.round(MATCH_POLICY.minCandidate*100));
   if(lo>=hi){lo=hi-1;}
   els.highThreshold.value=hi;els.lowThreshold.value=lo;
-  state.highThreshold=hi/100;state.lowThreshold=lo/100;localStorage.setItem('highThreshold',hi);localStorage.setItem('lowThreshold',lo);updateThresholdLabels();
+  state.highThreshold=hi/100;state.lowThreshold=lo/100;localStorage.setItem('highThreshold055',hi);localStorage.setItem('lowThreshold055',lo);updateThresholdLabels();
 }
 function updateThresholdLabels(){els.highThresholdLabel.textContent=`${Math.round(state.highThreshold*100)}%`;els.lowThresholdLabel.textContent=`${Math.round(state.lowThreshold*100)}%`;}
 
@@ -1479,11 +1567,11 @@ function descriptorSimilarityDetailed(a,b){
   let score=parts.reduce((z,x)=>z+x[0]*x[1],0)/wsum;
   const brightnessPenalty=Math.max(0,bright-.28)*.10;
   score-=brightnessPenalty;
-  if(!colorPass) score=Math.min(score,.59); // 色ゲート不合格は候補しきい値を絶対に超えない
+  if(!colorPass) score=Math.min(score,.49); // 色ゲート不合格は50%候補に入れない
   return {
     score:clamp(score,0,1),color,colorRaw:cm.raw,colorCoarse:cm.coarse,pattern,texture,edge,hash,local,
     brightnessPenalty,localUsed,colorPass,dominantConflict:cm.dominantConflict,
-    rejectedReason:colorPass?'':(cm.dominantConflict?'dominant-color-conflict':(obviousBrightnessMismatch?'brightness-color-conflict':'color-below-60'))
+    rejectedReason:colorPass?'':(cm.dominantConflict?'dominant-color-conflict':(obviousBrightnessMismatch?'brightness-color-conflict':'color-below-54'))
   };
 }
 
