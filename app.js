@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.4.9';
+const APP_VERSION = '0.5.0';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -67,7 +67,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=049').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=050').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -91,6 +91,7 @@ function bindUI(){
   els.homeBtn.onclick=()=>showScreen('homeScreen');
   els.settingsBtn.onclick=()=>showScreen('settingsScreen');
   els.newSessionBtn.onclick=newRegistration;
+  bindResidentNameInput();
   els.registerSessionSelect.onchange=loadRegistrationSession;
   els.photoInput.onchange=loadPhotos;
   els.prevPhoto.onclick=()=>changePhoto(-1);
@@ -132,6 +133,31 @@ function bindUI(){
   document.addEventListener('pointerdown',()=>ensureAudio(),{once:true,capture:true});
 }
 
+function bindResidentNameInput(){
+  const el=els.residentName;
+  if(!el)return;
+
+  // iPad/Safariで透明レイヤーや状態残りの影響を受けても入力できるようにする。
+  const makeEditable=()=>{
+    if(el.disabled) el.disabled=false;
+    if(el.readOnly) el.readOnly=false;
+  };
+  const focusInput=()=>{
+    makeEditable();
+    try{ el.focus({preventScroll:true}); }catch(e){ try{el.focus();}catch(_){} }
+  };
+
+  // 通常のネイティブ入力を阻害しないため preventDefault は使わない。
+  el.addEventListener('pointerdown',()=>{ makeEditable(); },{passive:true});
+  el.addEventListener('touchend',()=>{ focusInput(); },{passive:true});
+  el.addEventListener('click',()=>{ focusInput(); });
+  el.addEventListener('input',()=>{
+    const session=state.currentSession;
+    if(session) session.name=el.value;
+  });
+  makeEditable();
+}
+
 function bindIPadTap(el,handler){
   if(!el)return;
   let pointerHandledAt=0;
@@ -154,7 +180,7 @@ function showScreen(id){
   $(`#${id}`).classList.add('active');
   if(id==='homeScreen') renderHome();
   if(id==='checkScreen'){ populateCheckSelect(); renderCheckList(); }
-  if(id==='registerScreen') populateRegisterSelect();
+  if(id==='registerScreen'){ populateRegisterSelect(); if(els.residentName){els.residentName.disabled=false;els.residentName.readOnly=false;} }
 }
 
 function setStatus(t){ els.statusText.textContent=t; }
