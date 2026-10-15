@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.5.1';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -67,13 +67,13 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=050').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=051').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
 
 function cacheEls(){
-  ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','newSessionBtn',
+  ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','residentNameFallback','newSessionBtn',
    'registerSessionSelect','photoInput','photoStage','registerCanvas','photoHint','photoNav','prevPhoto','nextPhoto','photoCounter',
    'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','finishRegister',
    'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
@@ -91,7 +91,8 @@ function bindUI(){
   els.homeBtn.onclick=()=>showScreen('homeScreen');
   els.settingsBtn.onclick=()=>showScreen('settingsScreen');
   els.newSessionBtn.onclick=newRegistration;
-  bindResidentNameInput();
+  if(els.residentNameFallback) els.residentNameFallback.onclick=editResidentNameFallback;
+  els.residentName.addEventListener('input',()=>{ if(state.currentSession) state.currentSession.name=els.residentName.value; });
   els.registerSessionSelect.onchange=loadRegistrationSession;
   els.photoInput.onchange=loadPhotos;
   els.prevPhoto.onclick=()=>changePhoto(-1);
@@ -133,29 +134,15 @@ function bindUI(){
   document.addEventListener('pointerdown',()=>ensureAudio(),{once:true,capture:true});
 }
 
-function bindResidentNameInput(){
-  const el=els.residentName;
-  if(!el)return;
-
-  // iPad/Safariで透明レイヤーや状態残りの影響を受けても入力できるようにする。
-  const makeEditable=()=>{
-    if(el.disabled) el.disabled=false;
-    if(el.readOnly) el.readOnly=false;
-  };
-  const focusInput=()=>{
-    makeEditable();
-    try{ el.focus({preventScroll:true}); }catch(e){ try{el.focus();}catch(_){} }
-  };
-
-  // 通常のネイティブ入力を阻害しないため preventDefault は使わない。
-  el.addEventListener('pointerdown',()=>{ makeEditable(); },{passive:true});
-  el.addEventListener('touchend',()=>{ focusInput(); },{passive:true});
-  el.addEventListener('click',()=>{ focusInput(); });
-  el.addEventListener('input',()=>{
-    const session=state.currentSession;
-    if(session) session.name=el.value;
-  });
-  makeEditable();
+function editResidentNameFallback(){
+  const current=String(els.residentName?.value||'');
+  const entered=window.prompt('利用者名・識別名を入力してください',current);
+  if(entered===null)return;
+  const value=String(entered).trim();
+  els.residentName.value=value;
+  const session=ensureCurrentSession();
+  session.name=value;
+  toast(value ? `利用者名：${value}` : '利用者名を空欄にしました');
 }
 
 function bindIPadTap(el,handler){
@@ -180,7 +167,7 @@ function showScreen(id){
   $(`#${id}`).classList.add('active');
   if(id==='homeScreen') renderHome();
   if(id==='checkScreen'){ populateCheckSelect(); renderCheckList(); }
-  if(id==='registerScreen'){ populateRegisterSelect(); if(els.residentName){els.residentName.disabled=false;els.residentName.readOnly=false;} }
+  if(id==='registerScreen') populateRegisterSelect();
 }
 
 function setStatus(t){ els.statusText.textContent=t; }

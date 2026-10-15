@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=050" />
+  <link rel="manifest" href="manifest.webmanifest?v=051" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=050" />
+  <link rel="stylesheet" href="style.css?v=051" />
 </head>
 <body>
   <div id="app">
@@ -43,12 +43,13 @@
 
       <section class="screen" id="registerScreen">
         <div class="stepbar"><b>入所時登録</b><span>写真 → 物品タップ → 種類選択</span></div>
-        <div class="card compact resident-card">
+        <div class="card compact">
           <label class="field-label" for="residentName">利用者名・識別名</label>
-          <div class="row resident-input-row">
-            <input id="residentName" class="text-input" type="text" inputmode="text" enterkeyhint="done" autocapitalize="words" autocomplete="off" spellcheck="false" placeholder="例：山田様 / 203号室" aria-label="利用者名・識別名" />
+          <div class="row">
+            <input id="residentName" class="text-input" placeholder="例：山田様 / 203号室" autocomplete="off" />
             <button id="newSessionBtn" class="small-btn">新規</button>
           </div>
+          <button id="residentNameFallback" class="small-btn resident-name-fallback" type="button">⌨ キーボードが出ない時はこちら</button>
           <select id="registerSessionSelect" class="select-input"><option value="">新規登録</option></select>
         </div>
 
@@ -208,7 +209,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.5.0は入所時の利用者名・識別名入力をiPad向けに修正しました。入力欄を他のレイヤーより前面に固定し、タップ時のフォーカスを補助することで、ソフトウェアキーボードから確実に入力できるようにしています。退所時の登録画像・照合ドック機能はv0.4.9のまま維持しています。</p>
+          <p>v0.5.1は入所時の利用者名・識別名入力をiPad向けに修正しました。入力欄を他のレイヤーより前面に固定し、タップ時のフォーカスを補助することで、ソフトウェアキーボードから確実に入力できるようにしています。退所時の登録画像・照合ドック機能はv0.4.9のまま維持しています。</p>
         </div>
       </section>
     </main>
@@ -245,6 +246,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=050"></script>
+<script src="app.js?v=051"></script>
 </body>
 </html>

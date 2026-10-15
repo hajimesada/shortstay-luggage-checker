@@ -247,27 +247,17 @@
   .camera-card > .match-question-dock .camera-inline-confirm{min-width:82px;min-height:52px;font-size:17px;padding:8px 10px}
 }
 
-
-/* v0.5.0 iPad resident-name input reliability */
-.resident-card{position:relative;z-index:6;overflow:visible}
-.resident-input-row{position:relative;z-index:7;gap:8px;align-items:stretch}
+/* v0.5.1 resident-name input: native field + prompt fallback */
+.resident-name-fallback{
+  display:block;
+  margin:8px 0 10px;
+  width:100%;
+  background:#eef6ff;
+  color:#24527a;
+  border:1px solid #cfe2f5;
+  touch-action:manipulation;
+}
 #residentName{
-  position:relative;
-  z-index:10;
-  flex:1 1 auto;
-  min-width:0;
-  width:auto;
-  pointer-events:auto!important;
-  touch-action:auto!important;
-  -webkit-user-select:text!important;
-  user-select:text!important;
-  -webkit-appearance:none;
-  appearance:none;
-  background:#fff;
+  -webkit-user-select:text;
+  user-select:text;
 }
-#residentName:focus{
-  outline:none;
-  border-color:#28b7a9;
-  box-shadow:0 0 0 4px rgba(40,183,169,.16);
-}
-.resident-input-row #newSessionBtn{position:relative;z-index:8;flex:0 0 auto}
