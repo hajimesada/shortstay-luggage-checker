@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.4.6';
+const APP_VERSION = '0.4.8';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -67,7 +67,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=046').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=048').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -77,7 +77,8 @@ function cacheEls(){
    'registerSessionSelect','photoInput','photoStage','registerCanvas','photoHint','photoNav','prevPhoto','nextPhoto','photoCounter',
    'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','finishRegister',
    'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
-   'successPop','successText','candidateName','scoreText','scoreBar','matchQuestion','matchQuestionEmoji','matchQuestionMain','matchQuestionSub','startCamera','stopCamera','captureInput','manualConfirm','checkList',
+   'successPop','successText','candidateName','scoreText','scoreBar','matchQuestion','matchQuestionEmoji','matchQuestionMain','matchQuestionSub','matchQuestionThumbBtn','matchQuestionThumb','startCamera','stopCamera','captureInput','manualConfirm','checkList',
+   'itemPreviewModal','itemPreviewImage','itemPreviewTitle','itemPreviewMeta','itemPreviewClose','itemPreviewCaption',
    'resetChecks','highThreshold','lowThreshold','highThresholdLabel','lowThresholdLabel','exportBtn','importInput','homeBtn','settingsBtn',
    'goRegister','goCheck','matchDetails','testLogCount','exportLogBtn','clearLogBtn','categoryManager','newCategoryName','newCategoryEmoji','addCategoryBtn','resetCategoriesBtn',
    'registerSuccessPop','registerSuccessText','registerSuccessCount','selectionShrink','selectionGrow',
@@ -114,7 +115,11 @@ function bindUI(){
   els.stopCamera.onclick=stopCamera;
   els.captureInput.onchange=matchCapturedPhoto;
   els.manualConfirm.onclick=manualConfirm;
+  els.matchQuestionThumbBtn.onclick=openCurrentCandidatePreview;
   els.resetChecks.onclick=resetChecks;
+  els.itemPreviewClose.onclick=closeItemPreview;
+  els.itemPreviewModal.addEventListener('click',e=>{ if(e.target===els.itemPreviewModal) closeItemPreview(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !els.itemPreviewModal.classList.contains('hidden')) closeItemPreview(); });
   els.highThreshold.oninput=saveThresholds;
   els.lowThreshold.oninput=saveThresholds;
   els.exportBtn.onclick=exportBackup;
@@ -901,13 +906,56 @@ function renderCheckList(){
   const id=els.checkSessionSelect.value,s=state.sessions.find(x=>x.id===id);
   if(!s){els.checkList.className='check-list empty';els.checkList.textContent='対象を選択してください';return;}
   els.checkList.className='check-list';els.checkList.innerHTML='';
+
+  // 同じカテゴリが複数ある場合に「ズボン 2/3」のように個体を見分けやすくする
+  const totals=countCategories(s.items||[]);
+  const categorySeen={};
+
   s.items.forEach((it,i)=>{
-    const row=document.createElement('div');row.className='check-row'+(it.checked?' done':'');
-    row.innerHTML=`<span class="check-icon">${it.checked?'✅':emojiFor(it.category)}</span><div class="grow"><b>${escapeHtml(it.category)} #${i+1}</b>${it.groupId?'<div class="chip">同一グループ</div>':''}</div><span>${it.checked?'確認済み':'未確認'}</span>`;
+    categorySeen[it.category]=(categorySeen[it.category]||0)+1;
+    const categoryNo=categorySeen[it.category];
+    const categoryTotal=totals[it.category]||1;
+    const row=document.createElement('div');
+    row.className='check-row previewable'+(it.checked?' done':'');
+    row.setAttribute('role','button');
+    row.setAttribute('tabindex','0');
+    row.setAttribute('aria-label',`${it.category} ${categoryNo}/${categoryTotal} の登録画像を見る`);
+    row.innerHTML=`<span class="check-icon">${it.checked?'✅':emojiFor(it.category)}</span><div class="grow"><b>${escapeHtml(it.category)} ${categoryNo}/${categoryTotal}</b>${it.groupId?'<div class="chip">同一グループ</div>':''}<div class="view-photo-hint">📷 入所時画像を見る</div></div><span class="check-status">${it.checked?'確認済み':'未確認'}</span>`;
+    const open=()=>openItemPreview(s.id,it.id,categoryNo,categoryTotal);
+    row.addEventListener('click',open);
+    row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
     els.checkList.appendChild(row);
   });
   const done=s.items.filter(x=>x.checked).length;
   if(done===s.items.length && s.items.length){setTimeout(()=>showSuccessOverlay('全品チェック完了！ 🎉'),120);}
+}
+
+function openItemPreview(sessionId,itemId,categoryNo=1,categoryTotal=1){
+  const session=state.sessions.find(x=>x.id===sessionId);
+  const item=session?.items?.find(x=>x.id===itemId);
+  if(!item){toast('登録画像を取得できませんでした');return;}
+
+  els.itemPreviewTitle.textContent=`${emojiFor(item.category)} ${item.category} ${categoryNo}/${categoryTotal}`;
+  els.itemPreviewMeta.textContent=item.checked?'✅ 確認済み':'⬜ まだ照合できていません';
+  els.itemPreviewCaption.textContent=item.groupId
+    ? '同じ種類・似た物品が複数あります。入所時画像と現物を見比べてください。'
+    : '入所時に登録した画像です。退所時の現物と目視で確認できます。';
+
+  if(item.crop){
+    els.itemPreviewImage.src=item.crop;
+    els.itemPreviewImage.alt=`${item.category} ${categoryNo}/${categoryTotal} の入所時登録画像`;
+    els.itemPreviewImage.classList.remove('hidden');
+  }else{
+    els.itemPreviewImage.removeAttribute('src');
+    els.itemPreviewImage.classList.add('hidden');
+    els.itemPreviewCaption.textContent='この物品には登録画像が残っていません。';
+  }
+  els.itemPreviewModal.classList.remove('hidden');
+}
+
+function closeItemPreview(){
+  els.itemPreviewModal.classList.add('hidden');
+  els.itemPreviewImage.removeAttribute('src');
 }
 
 async function startCamera(){
@@ -994,35 +1042,77 @@ function categoryEmoji(category){
   return row?.[1] || emojiFor(category) || '📦';
 }
 
-function setMatchQuestion({category='',score=0,mode='waiting',hits=0}={}){
+function candidateDisplayInfo(session,item){
+  if(!session||!item)return {no:1,total:1,label:item?.category||''};
+  const same=(session.items||[]).filter(x=>x.category===item.category);
+  const idx=same.findIndex(x=>x.id===item.id);
+  const no=idx>=0?idx+1:1;
+  const total=Math.max(1,same.length);
+  return {no,total,label:total>1?`${item.category} ${no}/${total}`:item.category};
+}
+
+function setMatchQuestionThumb(item){
+  if(!els.matchQuestionThumbBtn||!els.matchQuestionThumb)return;
+  if(item?.crop){
+    els.matchQuestionThumb.src=item.crop;
+    els.matchQuestionThumb.alt=`${item.category} の入所時登録画像`;
+    els.matchQuestionThumbBtn.classList.remove('hidden');
+  }else{
+    els.matchQuestionThumb.removeAttribute('src');
+    els.matchQuestionThumbBtn.classList.add('hidden');
+  }
+}
+
+function openCurrentCandidatePreview(){
+  const session=state.sessions.find(x=>x.id===els.checkSessionSelect.value);
+  const item=state.currentCandidate?.item;
+  if(!session||!item){toast('候補画像がありません');return;}
+  const info=candidateDisplayInfo(session,item);
+  openItemPreview(session.id,item.id,info.no,info.total);
+}
+
+function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}={}){
   if(!els.matchQuestion)return;
+  const session=state.sessions.find(x=>x.id===els.checkSessionSelect.value);
+  if(item && !category) category=item.category||'';
+  const info=item?candidateDisplayInfo(session,item):{no:1,total:1,label:category};
+
   els.matchQuestion.classList.remove('waiting','possible','confident','locked','complete');
   els.matchQuestion.classList.add(mode);
+
   if(mode==='complete'){
+    setMatchQuestionThumb(null);
+    els.manualConfirm.classList.add('hidden');
     els.matchQuestionEmoji.textContent='🎉';
     els.matchQuestionMain.textContent='全品チェック完了！';
     els.matchQuestionSub.textContent='お荷物の確認がすべて終わりました';
     return;
   }
   if(mode==='locked'){
+    setMatchQuestionThumb(null);
+    els.manualConfirm.classList.add('hidden');
     els.matchQuestionEmoji.textContent='↔️';
     els.matchQuestionMain.textContent='次の物品をどうぞ';
-    els.matchQuestionSub.textContent='同じ物品の二重カウント防止のため、一度枠から外してください';
+    els.matchQuestionSub.textContent='一度、物品を枠から外してください';
     return;
   }
   if(!category){
+    setMatchQuestionThumb(null);
+    els.manualConfirm.classList.add('hidden');
     els.matchQuestionEmoji.textContent='🔎';
     els.matchQuestionMain.textContent='物品を枠に入れてください';
-    els.matchQuestionSub.textContent='候補が見つかると「上着ですか？」のように大きく表示します';
+    els.matchQuestionSub.textContent='候補が見つかると、登録画像と「はい」がここに出ます';
     return;
   }
+
   const pct=Math.round(score*100);
+  setMatchQuestionThumb(item);
   els.matchQuestionEmoji.textContent=categoryEmoji(category);
-  els.matchQuestionMain.textContent=`${category}ですか？`;
+  els.matchQuestionMain.textContent=`${info.label}ですか？`;
   if(mode==='confident'){
-    els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 確認中 ${Math.max(1,hits)}/3`;
+    els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 自動確認 ${Math.max(1,hits)}/3`;
   }else{
-    els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 候補です。合っていれば下のボタンで確認`;
+    els.matchQuestionSub.textContent=`一致度 ${pct}% ・ 登録画像と現物を確認してください`;
   }
 }
 
@@ -1064,11 +1154,15 @@ async function evaluateDescriptor(desc,singleShot=false){
     });
   }
 
-  if(score>=state.lowThreshold && !confident){
-    setMatchQuestion({category:best.item.category,score,mode:'possible'});
-    els.matchBadge.textContent=`候補：${best.item.category} ${Math.round(score*100)}%`;
-    els.manualConfirm.textContent=`はい、${best.item.category}です ✓`;
+  if(score>=state.lowThreshold){
+    const info=candidateDisplayInfo(s,best.item);
+    els.manualConfirm.textContent='はい ✓';
+    els.manualConfirm.setAttribute('aria-label',`はい、${info.label}です`);
     els.manualConfirm.classList.remove('hidden');
+    if(!confident){
+      setMatchQuestion({item:best.item,score,mode:'possible'});
+      els.matchBadge.textContent=`候補：${info.label} ${Math.round(score*100)}%`;
+    }
   }else{
     els.manualConfirm.classList.add('hidden');
     if(!confident) setMatchQuestion();
@@ -1077,8 +1171,13 @@ async function evaluateDescriptor(desc,singleShot=false){
   if(!confident){state.consecutiveHits=0;state.consecutiveKey=null;return;}
 
   if(key===state.consecutiveKey) state.consecutiveHits++; else{state.consecutiveKey=key;state.consecutiveHits=1;}
-  setMatchQuestion({category:best.item.category,score,mode:'confident',hits:state.consecutiveHits});
-  els.matchBadge.textContent=`${best.item.category} 一致候補 ${state.consecutiveHits}/3`;
+  const info=candidateDisplayInfo(s,best.item);
+  setMatchQuestion({item:best.item,score,mode:'confident',hits:state.consecutiveHits});
+  // 高一致でも職員が即時に「はい」で目視確定できる
+  els.manualConfirm.textContent='はい ✓';
+  els.manualConfirm.setAttribute('aria-label',`はい、${info.label}です`);
+  els.manualConfirm.classList.remove('hidden');
+  els.matchBadge.textContent=`${info.label} 一致候補 ${state.consecutiveHits}/3`;
   if(singleShot || state.consecutiveHits>=3) await acceptMatch(best.item,s);
 }
 

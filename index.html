@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=046" />
+  <link rel="manifest" href="manifest.webmanifest?v=048" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=046" />
+  <link rel="stylesheet" href="style.css?v=048" />
 </head>
 <body>
   <div id="app">
@@ -124,6 +124,23 @@
             <canvas id="cameraCanvas"></canvas>
             <div class="scan-frame"><span></span></div>
             <div class="match-badge" id="matchBadge">カメラ停止中</div>
+
+            <!-- v0.4.8: 照合操作をカメラ枠内で完結 -->
+            <div class="match-question waiting" id="matchQuestion" aria-live="polite">
+              <button type="button" class="match-question-thumb hidden" id="matchQuestionThumbBtn" aria-label="候補の登録画像を拡大表示">
+                <img id="matchQuestionThumb" alt="候補の入所時登録画像" />
+                <span>登録画像</span>
+              </button>
+              <div class="match-question-copy">
+                <div class="match-question-title-row">
+                  <span class="match-question-emoji" id="matchQuestionEmoji">🔎</span>
+                  <div class="match-question-main" id="matchQuestionMain">物品を枠に入れてください</div>
+                </div>
+                <div class="match-question-sub" id="matchQuestionSub">候補が見つかるとここに表示します</div>
+              </div>
+              <button id="manualConfirm" class="manual-confirm camera-inline-confirm hidden">はい ✓</button>
+            </div>
+
             <div class="success-pop" id="successPop"><div class="big-circle">〇</div><div id="successText">一致！</div></div>
           </div>
           <div class="row center gap8 wrap">
@@ -131,16 +148,10 @@
             <button id="stopCamera" class="small-btn" disabled>停止</button>
             <label class="small-btn file-capture">1枚撮って照合<input id="captureInput" type="file" accept="image/*" capture="environment" hidden /></label>
           </div>
-          <div class="match-question waiting" id="matchQuestion" aria-live="polite">
-            <div class="match-question-emoji" id="matchQuestionEmoji">🔎</div>
-            <div class="match-question-main" id="matchQuestionMain">物品を枠に入れてください</div>
-            <div class="match-question-sub" id="matchQuestionSub">候補が見つかると「上着ですか？」のように大きく表示します</div>
-          </div>
           <div class="score-panel">
             <div><span>候補</span><b id="candidateName">—</b></div>
             <div><span>一致度</span><b id="scoreText">—</b></div>
             <div class="meter"><i id="scoreBar"></i></div>
-            <button id="manualConfirm" class="manual-confirm hidden">この物品で確認 ✓</button>
           </div>
           <details class="match-details">
             <summary>判定の内訳を見る</summary>
@@ -196,12 +207,31 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.4.6は退所時照合で「🧥 上着ですか？」のように候補物品名を大きく表示し、一致度と確認状態を一目で分かるようにしました。</p>
+          <p>v0.4.8は退所時の照合操作をカメラ枠内で完結できるようにしました。候補名の横に入所時サムネイルを表示し、タップで拡大できます。「はい」ボタンもカメラ枠内に表示するため、照合中に下へスクロールする必要がありません。</p>
         </div>
       </section>
     </main>
 
     <div class="toast" id="toast"></div>
+
+    <div class="modal-backdrop hidden item-preview-backdrop" id="itemPreviewModal" role="dialog" aria-modal="true" aria-labelledby="itemPreviewTitle">
+      <div class="item-preview-card card">
+        <div class="item-preview-head">
+          <div>
+            <div class="item-preview-kicker">入所時の登録画像</div>
+            <h2 id="itemPreviewTitle">荷物画像</h2>
+          </div>
+          <button class="item-preview-close" id="itemPreviewClose" aria-label="閉じる">✕</button>
+        </div>
+        <div class="item-preview-status" id="itemPreviewMeta">未確認</div>
+        <div class="item-preview-image-wrap">
+          <img id="itemPreviewImage" class="item-preview-image" alt="入所時登録画像" />
+        </div>
+        <p class="item-preview-caption" id="itemPreviewCaption">入所時に登録した画像です。</p>
+        <button class="ok-btn item-preview-bottom-close" onclick="document.getElementById('itemPreviewClose').click()">閉じる</button>
+      </div>
+    </div>
+
     <div class="modal-backdrop hidden" id="summaryModal">
       <div class="modal card">
         <div class="party">🎉</div>
@@ -214,6 +244,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=046"></script>
+<script src="app.js?v=048"></script>
 </body>
 </html>
