@@ -212,3 +212,51 @@
   .camera-card > .match-question-dock .match-question-sub{font-size:10.5px}
   .camera-card > .match-question-dock .camera-inline-confirm{min-width:82px;min-height:52px;font-size:17px;padding:8px 10px}
 }
+
+
+/* v0.5.4: precision-first matching + larger comparison image */
+.match-question.nomatch{border-color:#e28a8f;background:#fff1f2;box-shadow:0 5px 16px rgba(150,40,50,.09)}
+.match-question.nomatch .match-question-main{color:#a12f39}
+.camera-card > .match-question-dock{
+  grid-template-columns:minmax(220px,44%) minmax(0,1fr);
+  grid-template-rows:auto auto;
+  align-items:stretch;
+  padding:12px;
+  gap:10px 14px;
+  min-height:210px;
+}
+.camera-card > .match-question-dock .match-question-thumb{
+  grid-column:1;
+  grid-row:1 / 3;
+  width:100%;
+  height:auto;
+  min-height:190px;
+  aspect-ratio:4/3;
+  border-radius:16px;
+  align-self:stretch;
+}
+.camera-card > .match-question-dock .match-question-thumb img{object-fit:contain;background:#17212a}
+.camera-card > .match-question-dock .match-question-thumb span{font-size:12px;padding:5px 6px}
+.camera-card > .match-question-dock .match-question-copy{grid-column:2;grid-row:1;align-self:center}
+.camera-card > .match-question-dock .camera-inline-confirm{
+  grid-column:2;grid-row:2;
+  align-self:end;width:100%;min-height:64px;font-size:22px;
+}
+.camera-card > .match-question-dock.waiting,
+.camera-card > .match-question-dock.locked,
+.camera-card > .match-question-dock.complete,
+.camera-card > .match-question-dock.nomatch{
+  grid-template-columns:minmax(0,1fr);grid-template-rows:auto;min-height:70px;
+}
+.camera-card > .match-question-dock.waiting .match-question-copy,
+.camera-card > .match-question-dock.locked .match-question-copy,
+.camera-card > .match-question-dock.complete .match-question-copy,
+.camera-card > .match-question-dock.nomatch .match-question-copy{grid-column:1;grid-row:1;text-align:center}
+.camera-card > .match-question-dock.nomatch .match-question-title-row{justify-content:center}
+@media(max-width:720px){
+  .camera-card > .match-question-dock{grid-template-columns:minmax(150px,42%) minmax(0,1fr);min-height:170px;padding:9px;gap:8px 10px}
+  .camera-card > .match-question-dock .match-question-thumb{min-height:145px}
+  .camera-card > .match-question-dock .match-question-main{font-size:19px}
+  .camera-card > .match-question-dock .match-question-sub{font-size:11px}
+  .camera-card > .match-question-dock .camera-inline-confirm{min-height:56px;font-size:19px}
+}

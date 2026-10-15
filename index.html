@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=053" />
+  <link rel="manifest" href="manifest.webmanifest?v=054" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=053" />
+  <link rel="stylesheet" href="style.css?v=054" />
 </head>
 <body>
   <div id="app">
@@ -129,7 +129,7 @@
             <div class="success-pop" id="successPop"><div class="big-circle">〇</div><div id="successText">一致！</div></div>
           </div>
 
-          <!-- v0.5.3: 照合UIはカメラ画像直下のまま、iPad/PWAの氏名入力を安定化 -->
+          <!-- v0.5.4: 精度強化 + 大きい登録画像で見比べやすく -->
           <div class="match-question waiting match-question-dock" id="matchQuestion" aria-live="polite">
             <button type="button" class="match-question-thumb hidden" id="matchQuestionThumbBtn" aria-label="候補の登録画像を拡大表示">
               <img id="matchQuestionThumb" alt="候補の入所時登録画像" />
@@ -169,9 +169,9 @@
         <div class="stepbar"><b>設定・バックアップ</b><span>データはこのiPad内に保存</span></div>
         <div class="card">
           <div class="section-title">照合しきい値</div>
-          <label class="range-row">自動一致 <b id="highThresholdLabel">80%</b><input id="highThreshold" type="range" min="70" max="95" value="80" /></label>
-          <label class="range-row">候補表示 <b id="lowThresholdLabel">65%</b><input id="lowThreshold" type="range" min="50" max="79" value="65" /></label>
-          <p class="note">最初は80%で自動一致、65〜79%は職員確認にしています。運用データを見ながら調整します。</p>
+          <label class="range-row">自動一致 <b id="highThresholdLabel">85%</b><input id="highThreshold" type="range" min="85" max="95" value="85" /></label>
+          <label class="range-row">候補表示 <b id="lowThresholdLabel">72%</b><input id="lowThreshold" type="range" min="72" max="84" value="72" /></label>
+          <p class="note">v0.5.4は色一致60%以上を必須にし、候補72%以上・自動一致85%以上に強化しています。条件未達は「一致候補なし」と表示します。</p>
         </div>
         <div class="card">
           <div class="row between wrap gap8">
@@ -208,7 +208,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.5.3は、iPad Safari / ホーム画面PWAの利用者名入力を安定化するため、入力欄の属性・タッチフォーカス処理・写真選択後のblur・OS標準入力ダイアログのフォールバックを追加しました。退所時のサムネイル・「○○ですか？」・「はい」はカメラ画像直下のままです。</p>
+          <p>v0.5.4は、色一致60%以上を必須化し、赤・青・ピンク・白黒などの明確な色違いを強く除外します。柄物は色構成＋生地パターン、タグ・ファスナー・ロゴ等は局所特徴として比較します。照合時の登録画像も大きく表示して見比べやすくしました。メーカー文字そのものを読むOCRはまだ未搭載です。</p>
         </div>
       </section>
     </main>
@@ -245,6 +245,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=053"></script>
+<script src="app.js?v=054"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 'use strict';
 
-const APP_VERSION = '0.5.3';
+const APP_VERSION = '0.5.4';
+const MATCH_POLICY = Object.freeze({ minColor:0.60, minCandidate:0.72, minAuto:0.85, minMargin:0.05 });
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -38,8 +39,8 @@ const state = {
   testLogs: [],
   registerBusy: false,
   lastCategoryActivation: 0,
-  highThreshold: Number(localStorage.getItem('highThreshold') || 80) / 100,
-  lowThreshold: Number(localStorage.getItem('lowThreshold') || 65) / 100,
+  highThreshold: Math.max(MATCH_POLICY.minAuto, Number(localStorage.getItem('highThreshold') || 85) / 100),
+  lowThreshold: Math.max(MATCH_POLICY.minCandidate, Number(localStorage.getItem('lowThreshold') || 72) / 100),
   // バックグラウンド画像認識キュー管理
   bgQueue: [],
   bgTotal: 0,
@@ -67,7 +68,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=053').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=054').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -1138,7 +1139,7 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
   if(item && !category) category=item.category||'';
   const info=item?candidateDisplayInfo(session,item):{no:1,total:1,label:category};
 
-  els.matchQuestion.classList.remove('waiting','possible','confident','locked','complete');
+  els.matchQuestion.classList.remove('waiting','possible','confident','locked','complete','nomatch');
   els.matchQuestion.classList.add(mode);
 
   if(mode==='complete'){
@@ -1155,6 +1156,14 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
     els.matchQuestionEmoji.textContent='↔️';
     els.matchQuestionMain.textContent='次の物品をどうぞ';
     els.matchQuestionSub.textContent='一度、物品を枠から外してください';
+    return;
+  }
+  if(mode==='nomatch'){
+    setMatchQuestionThumb(null);
+    els.manualConfirm.classList.add('hidden');
+    els.matchQuestionEmoji.textContent='✕';
+    els.matchQuestionMain.textContent='一致候補なし';
+    els.matchQuestionSub.textContent='色・柄・局所特徴が基準に届いていません。別の物品を枠に入れてください';
     return;
   }
   if(!category){
@@ -1179,65 +1188,83 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
 
 async function evaluateDescriptor(desc,singleShot=false){
   const s=state.sessions.find(x=>x.id===els.checkSessionSelect.value);if(!s)return;
-  const pending=s.items.filter(x=>!x.checked);if(!pending.length){setMatchQuestion({mode:'complete'});showSuccessOverlay('全品チェック完了！ 🎉');return;}
-  let scored=pending.map(x=>{const detail=descriptorSimilarityDetailed(desc,x.descriptor);return {item:x,score:detail.score,detail};}).sort((a,b)=>b.score-a.score);
-  const best=scored[0],second=scored[1];
-  state.currentCandidate=best||null;
-  state.lastMatchDetail=best?.detail||null;
-  renderMatchDetails(state.lastMatchDetail, second?.score);
+  const pending=s.items.filter(x=>!x.checked);
+  if(!pending.length){state.currentCandidate=null;setMatchQuestion({mode:'complete'});showSuccessOverlay('全品チェック完了！ 🎉');return;}
+
+  const allScored=pending.map(x=>{
+    const detail=descriptorSimilarityDetailed(desc,x.descriptor);
+    return {item:x,score:detail.score,detail};
+  }).sort((a,b)=>b.score-a.score);
+
+  // v0.5.4: 色60%以上 + 明確な色矛盾なし + 候補72%以上を満たした物だけ候補にする。
+  // 「登録済みの中で最も近い」という理由だけでは候補表示しない。
+  const eligible=allScored.filter(x=>x.detail.colorPass && x.score>=Math.max(state.lowThreshold,MATCH_POLICY.minCandidate));
+  const best=eligible[0]||null;
+  const second=eligible[1]||null;
+  const rawBest=allScored[0]||null;
+
+  state.currentCandidate=best;
+  state.lastMatchDetail=(best||rawBest)?.detail||null;
+  renderMatchDetails(state.lastMatchDetail, second?.score||0);
+
   const score=best?.score||0;
-  els.candidateName.textContent=best?best.item.category:'—';els.scoreText.textContent=best?`${Math.round(score*100)}%`:'—';els.scoreBar.style.width=`${Math.round(score*100)}%`;
+  els.candidateName.textContent=best?candidateDisplayInfo(s,best.item).label:'候補なし';
+  els.scoreText.textContent=best?`${Math.round(score*100)}%`:'—';
+  els.scoreBar.style.width=`${best?Math.round(score*100):0}%`;
 
   if(state.lockUntilClear){
     setMatchQuestion({mode:'locked'});
-    if(score<.53){state.clearFrames++;els.matchBadge.textContent=`次の物品をどうぞ… ${state.clearFrames}/2`;}
+    const clearScore=rawBest?.score||0;
+    if(clearScore<.53){state.clearFrames++;els.matchBadge.textContent=`次の物品をどうぞ… ${state.clearFrames}/2`;}
     else{state.clearFrames=0;els.matchBadge.textContent='同じ物品を検出中：いったん枠から外してください';}
     if(state.clearFrames>=2){state.lockUntilClear=false;state.clearFrames=0;state.consecutiveHits=0;state.consecutiveKey=null;els.matchBadge.textContent='照合中…';setMatchQuestion();}
     return;
   }
 
-  const key=best?(best.item.groupId||best.item.id):null;
-  const margin=best&&second ? best.score-second.score : .2;
-  const high=score>=state.highThreshold;
-  const confident=high && (margin>=.035 || !!best?.item.groupId || pending.length===1);
-
   const now=Date.now();
+  if(!best){
+    state.consecutiveHits=0;state.consecutiveKey=null;els.manualConfirm.classList.add('hidden');
+    setMatchQuestion({mode:'nomatch'});
+    const why=rawBest?.detail?.colorPass===false ? `色 ${Math.round((rawBest.detail.color||0)*100)}% < 60%` : '基準未達';
+    els.matchBadge.textContent=`一致候補なし（${why}）`;
+    if(singleShot || now-state.lastLogAt>=2200){
+      state.lastLogAt=now;
+      logMatchResult({
+        mode:singleShot?'single':'camera',category:rawBest?.item?.category||'',score:rawBest?.score||0,
+        secondScore:allScored[1]?.score||0,margin:0,detail:rawBest?.detail||null,decision:'rejected'
+      });
+    }
+    return;
+  }
+
+  const key=best.item.groupId||best.item.id;
+  const margin=second ? best.score-second.score : .20;
+  const high=score>=Math.max(state.highThreshold,MATCH_POLICY.minAuto);
+  const confident=high && (margin>=MATCH_POLICY.minMargin || !!best.item.groupId || eligible.length===1);
+
   if(singleShot || now-state.lastLogAt>=2200){
     state.lastLogAt=now;
     logMatchResult({
-      mode: singleShot?'single':'camera',
-      category: best?.item?.category||'',
-      score,
-      secondScore: second?.score||0,
-      margin,
-      detail: best?.detail||null,
-      decision: confident?'auto-candidate':(score>=state.lowThreshold?'manual-candidate':'low')
+      mode: singleShot?'single':'camera',category:best.item.category,score,
+      secondScore:second?.score||0,margin,detail:best.detail,
+      decision:confident?'auto-candidate':'manual-candidate'
     });
   }
 
-  if(score>=state.lowThreshold){
-    const info=candidateDisplayInfo(s,best.item);
-    els.manualConfirm.textContent='はい ✓';
-    els.manualConfirm.setAttribute('aria-label',`はい、${info.label}です`);
-    els.manualConfirm.classList.remove('hidden');
-    if(!confident){
-      setMatchQuestion({item:best.item,score,mode:'possible'});
-      els.matchBadge.textContent=`候補：${info.label} ${Math.round(score*100)}%`;
-    }
-  }else{
-    els.manualConfirm.classList.add('hidden');
-    if(!confident) setMatchQuestion();
-  }
-
-  if(!confident){state.consecutiveHits=0;state.consecutiveKey=null;return;}
-
-  if(key===state.consecutiveKey) state.consecutiveHits++; else{state.consecutiveKey=key;state.consecutiveHits=1;}
   const info=candidateDisplayInfo(s,best.item);
-  setMatchQuestion({item:best.item,score,mode:'confident',hits:state.consecutiveHits});
-  // 高一致でも職員が即時に「はい」で目視確定できる
   els.manualConfirm.textContent='はい ✓';
   els.manualConfirm.setAttribute('aria-label',`はい、${info.label}です`);
   els.manualConfirm.classList.remove('hidden');
+
+  if(!confident){
+    state.consecutiveHits=0;state.consecutiveKey=null;
+    setMatchQuestion({item:best.item,score,mode:'possible'});
+    els.matchBadge.textContent=`候補：${info.label} ${Math.round(score*100)}%`;
+    return;
+  }
+
+  if(key===state.consecutiveKey) state.consecutiveHits++; else{state.consecutiveKey=key;state.consecutiveHits=1;}
+  setMatchQuestion({item:best.item,score,mode:'confident',hits:state.consecutiveHits});
   els.matchBadge.textContent=`${info.label} 一致候補 ${state.consecutiveHits}/3`;
   if(singleShot || state.consecutiveHits>=3) await acceptMatch(best.item,s);
 }
@@ -1270,10 +1297,17 @@ function showSuccessOverlay(text){
 }
 
 function loadSettings(){
+  state.highThreshold=Math.max(state.highThreshold,MATCH_POLICY.minAuto);
+  state.lowThreshold=Math.max(state.lowThreshold,MATCH_POLICY.minCandidate);
+  localStorage.setItem('highThreshold',Math.round(state.highThreshold*100));
+  localStorage.setItem('lowThreshold',Math.round(state.lowThreshold*100));
   els.highThreshold.value=Math.round(state.highThreshold*100);els.lowThreshold.value=Math.round(state.lowThreshold*100);updateThresholdLabels();
 }
 function saveThresholds(){
-  let hi=Number(els.highThreshold.value),lo=Number(els.lowThreshold.value);if(lo>=hi){lo=hi-1;els.lowThreshold.value=lo;}
+  let hi=Math.max(Number(els.highThreshold.value),Math.round(MATCH_POLICY.minAuto*100));
+  let lo=Math.max(Number(els.lowThreshold.value),Math.round(MATCH_POLICY.minCandidate*100));
+  if(lo>=hi){lo=hi-1;}
+  els.highThreshold.value=hi;els.lowThreshold.value=lo;
   state.highThreshold=hi/100;state.lowThreshold=lo/100;localStorage.setItem('highThreshold',hi);localStorage.setItem('lowThreshold',lo);updateThresholdLabels();
 }
 function updateThresholdLabels(){els.highThresholdLabel.textContent=`${Math.round(state.highThreshold*100)}%`;els.lowThresholdLabel.textContent=`${Math.round(state.lowThreshold*100)}%`;}
@@ -1377,30 +1411,90 @@ function descriptorSimilarity(a,b){
   return descriptorSimilarityDetailed(a,b).score;
 }
 
+function coarseColorProfile(hist){
+  const out=new Array(12).fill(0); // 黒/濃灰/灰/白/赤/橙茶/黄/緑/水色/青/紫/桃
+  if(!Array.isArray(hist))return out;
+  for(let hi=0;hi<12;hi++)for(let si=0;si<4;si++)for(let vi=0;vi<4;vi++){
+    const p=hist[(hi*4+si)*4+vi]||0;if(!p)continue;
+    let k=0;
+    if(vi===0) k=0;
+    else if(si===0 || (si===1 && vi>=2)) k=vi===1?1:(vi===2?2:3);
+    else if(si<=1 && vi===1) k=1;
+    else if((hi===0||hi===11) && vi<=2 && si>=2) k=5; // 暗い赤橙は茶系へ
+    else if(hi===0||hi===11) k=4;
+    else if(hi===1) k=5;
+    else if(hi===2) k=6;
+    else if(hi===3||hi===4) k=7;
+    else if(hi===5) k=8;
+    else if(hi===6||hi===7) k=9;
+    else if(hi===8) k=10;
+    else k=11;
+    out[k]+=p;
+  }
+  return normalizeHist(out);
+}
+function normalizedEntropy(hist){
+  if(!Array.isArray(hist)||!hist.length)return 0;
+  let e=0,n=0;for(const p of hist){if(p>1e-8){e-=p*Math.log(p);n++;}}
+  return n>1?clamp(e/Math.log(hist.length),0,1):0;
+}
+function dominantColor(profile){
+  let idx=0,val=0;for(let i=0;i<profile.length;i++)if(profile[i]>val){idx=i;val=profile[i];}
+  return {idx,strength:val};
+}
+function colorFamiliesCompatible(a,b){
+  if(a===b)return true;
+  const near={0:[1],1:[0,2],2:[1,3],3:[2],4:[5,11],5:[4,6],6:[5,7],7:[6,8],8:[7,9],9:[8,10],10:[9,11],11:[10,4]};
+  return (near[a]||[]).includes(b);
+}
+function robustColorComparison(a,b){
+  const raw=histIntersection(a||[],b||[]);
+  const pa=coarseColorProfile(a||[]),pb=coarseColorProfile(b||[]);
+  const coarse=histIntersection(pa,pb);
+  const da=dominantColor(pa),db=dominantColor(pb);
+  const dominantConflict=da.strength>=.55 && db.strength>=.55 && !colorFamiliesCompatible(da.idx,db.idx);
+  const mixA=normalizedEntropy(pa),mixB=normalizedEntropy(pb);
+  const mixture=clamp(1-Math.abs(mixA-mixB)*1.65,0,1);
+  const score=clamp(raw*.58+coarse*.42,0,1);
+  return {score,raw,coarse,mixture,dominantConflict};
+}
 function descriptorSimilarityDetailed(a,b){
-  if(!a||!b)return {score:0,color:0,texture:0,edge:0,hash:0,local:0,brightnessPenalty:0,localUsed:false};
-  const color=histIntersection(a.color,b.color);
+  if(!a||!b)return {score:0,color:0,colorRaw:0,colorCoarse:0,pattern:0,texture:0,edge:0,hash:0,local:0,brightnessPenalty:0,localUsed:false,colorPass:false,rejectedReason:'no-descriptor'};
+  const cm=robustColorComparison(a.color,b.color);
+  const color=cm.score;
   const texture=cosine(a.lbp,b.lbp);
+  const pattern=clamp(texture*.62+cm.mixture*.38,0,1); // 柄物は色の混ざり方 + LBPで比較
   const edge=cosine(a.edge,b.edge);
   const hash=1-hammingHex(a.dhash,b.dhash)/64;
   const local=localBriefSimilarity(a.brief||[],b.brief||[]);
   const localUsed=(a.brief||[]).length>=4 && (b.brief||[]).length>=4;
-  const parts=[[color,.28],[texture,.26],[edge,.13],[hash,.05]];
+  const bright=Math.abs((a.mean||0)-(b.mean||0))/255;
+  const obviousBrightnessMismatch=bright>.42 && color<.76;
+  const colorPass=color>=MATCH_POLICY.minColor && !cm.dominantConflict && !obviousBrightnessMismatch;
+
+  // 全体形状は低ウェイト。色を最重要にし、局所特徴はタグ・ファスナー・ロゴ・ポケット等の形を狙う。
+  const parts=[[color,.36],[pattern,.22],[edge,.10],[hash,.04]];
   if(localUsed) parts.push([local,.28]);
   const wsum=parts.reduce((z,x)=>z+x[1],0);
   let score=parts.reduce((z,x)=>z+x[0]*x[1],0)/wsum;
-  const bright=Math.abs((a.mean||0)-(b.mean||0))/255;
-  const brightnessPenalty=Math.max(0,bright-.28)*.12;
+  const brightnessPenalty=Math.max(0,bright-.28)*.10;
   score-=brightnessPenalty;
-  return {score:clamp(score,0,1),color,texture,edge,hash,local,brightnessPenalty,localUsed};
+  if(!colorPass) score=Math.min(score,.59); // 色ゲート不合格は候補しきい値を絶対に超えない
+  return {
+    score:clamp(score,0,1),color,colorRaw:cm.raw,colorCoarse:cm.coarse,pattern,texture,edge,hash,local,
+    brightnessPenalty,localUsed,colorPass,dominantConflict:cm.dominantConflict,
+    rejectedReason:colorPass?'':(cm.dominantConflict?'dominant-color-conflict':(obviousBrightnessMismatch?'brightness-color-conflict':'color-below-60'))
+  };
 }
 
 function renderMatchDetails(detail,secondScore=0){
   if(!els.matchDetails)return;
   if(!detail){els.matchDetails.innerHTML='<span>まだ照合していません</span>';return;}
   const pct=v=>`${Math.round(clamp(v||0,0,1)*100)}%`;
+  const colorLabel=detail.colorPass===false?'色（基準未達）':'色';
   const cells=[
-    ['色',detail.color],['生地',detail.texture],['局所特徴',detail.localUsed?detail.local:null],
+    [colorLabel,detail.color],['柄/色構成',detail.pattern],['生地',detail.texture],
+    ['局所特徴（タグ・ファスナー等）',detail.localUsed?detail.local:null],
     ['縫い目/エッジ',detail.edge],['全体形状',detail.hash],['2位との差',Math.max(0,(detail.score||0)-(secondScore||0))]
   ];
   els.matchDetails.innerHTML=cells.map(([n,v])=>`<div class="detail-cell"><span>${n}</span><b>${v===null?'判定なし':pct(v)}</b></div>`).join('');
@@ -1416,8 +1510,8 @@ function logMatchResult(r){
   state.testLogs.push({
     time:new Date().toISOString(),mode:r.mode||'',category:r.category||'',
     score:+(r.score||0).toFixed(4),secondScore:+(r.secondScore||0).toFixed(4),margin:+(r.margin||0).toFixed(4),
-    color:+(d.color||0).toFixed(4),texture:+(d.texture||0).toFixed(4),local:d.localUsed?+(d.local||0).toFixed(4):'',
-    edge:+(d.edge||0).toFixed(4),shape:+(d.hash||0).toFixed(4),decision:r.decision||''
+    color:+(d.color||0).toFixed(4),pattern:+(d.pattern||0).toFixed(4),texture:+(d.texture||0).toFixed(4),local:d.localUsed?+(d.local||0).toFixed(4):'',
+    edge:+(d.edge||0).toFixed(4),shape:+(d.hash||0).toFixed(4),colorPass:d.colorPass===false?'NG':'OK',decision:r.decision||''
   });
   if(state.testLogs.length>300)state.testLogs=state.testLogs.slice(-300);
   try{localStorage.setItem('shortstayTestLogs',JSON.stringify(state.testLogs));}catch(e){}
@@ -1425,7 +1519,7 @@ function logMatchResult(r){
 }
 function exportTestLog(){
   if(!state.testLogs.length){toast('テストログはまだありません');return;}
-  const headers=['time','mode','category','score','secondScore','margin','color','texture','local','edge','shape','decision'];
+  const headers=['time','mode','category','score','secondScore','margin','color','pattern','texture','local','edge','shape','colorPass','decision'];
   const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
   const csv='\ufeff'+[headers.join(','),...state.testLogs.map(r=>headers.map(h=>esc(r[h])).join(','))].join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
