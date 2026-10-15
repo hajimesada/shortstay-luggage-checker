@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=052" />
+  <link rel="manifest" href="manifest.webmanifest?v=053" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=052" />
+  <link rel="stylesheet" href="style.css?v=053" />
 </head>
 <body>
   <div id="app">
@@ -44,10 +44,11 @@
       <section class="screen" id="registerScreen">
         <div class="stepbar"><b>入所時登録</b><span>写真 → 物品タップ → 種類選択</span></div>
         <div class="card compact">
-          <label class="field-label">利用者名・識別名</label>
-          <div class="row">
-            <input id="residentName" class="text-input" placeholder="例：山田様 / 203号室" autocomplete="off" />
-            <button id="newSessionBtn" class="small-btn">新規</button>
+          <label class="field-label" for="residentName">利用者名・識別名</label>
+          <div class="row gap8">
+            <input id="residentName" type="text" inputmode="text" enterkeyhint="done" class="text-input" placeholder="例：山田様 / 203号室" autocomplete="off" autocorrect="off" autocapitalize="off" />
+            <button id="promptResidentBtn" type="button" class="small-btn" aria-label="ダイアログで名前を入力">⌨️入力</button>
+            <button id="newSessionBtn" type="button" class="small-btn">新規</button>
           </div>
           <select id="registerSessionSelect" class="select-input"><option value="">新規登録</option></select>
         </div>
@@ -128,7 +129,7 @@
             <div class="success-pop" id="successPop"><div class="big-circle">〇</div><div id="successText">一致！</div></div>
           </div>
 
-          <!-- v0.5.2: v0.4.8の安定動作を維持し、照合操作だけカメラ画像直下へ -->
+          <!-- v0.5.3: 照合UIはカメラ画像直下のまま、iPad/PWAの氏名入力を安定化 -->
           <div class="match-question waiting match-question-dock" id="matchQuestion" aria-live="polite">
             <button type="button" class="match-question-thumb hidden" id="matchQuestionThumbBtn" aria-label="候補の登録画像を拡大表示">
               <img id="matchQuestionThumb" alt="候補の入所時登録画像" />
@@ -207,7 +208,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.5.2は、ホーム画面版で氏名入力できていたv0.4.8を土台に戻し、照合候補のサムネイル・「○○ですか？」・「はい」だけをカメラ画像直下へ配置しました。氏名入力系には追加のタッチ処理を入れていません。</p>
+          <p>v0.5.3は、iPad Safari / ホーム画面PWAの利用者名入力を安定化するため、入力欄の属性・タッチフォーカス処理・写真選択後のblur・OS標準入力ダイアログのフォールバックを追加しました。退所時のサムネイル・「○○ですか？」・「はい」はカメラ画像直下のままです。</p>
         </div>
       </section>
     </main>
@@ -244,6 +245,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=052"></script>
+<script src="app.js?v=053"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.5.2';
+const APP_VERSION = '0.5.3';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -67,13 +67,13 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=052').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=053').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
 
 function cacheEls(){
-  ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','newSessionBtn',
+  ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','promptResidentBtn','newSessionBtn',
    'registerSessionSelect','photoInput','photoStage','registerCanvas','photoHint','photoNav','prevPhoto','nextPhoto','photoCounter',
    'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','finishRegister',
    'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
@@ -129,7 +129,55 @@ function bindUI(){
   els.addCategoryBtn.onclick=addCategoryFromSettings;
   els.resetCategoriesBtn.onclick=resetCategories;
   document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopCamera(); });
-  document.addEventListener('pointerdown',()=>ensureAudio(),{once:true,capture:true});
+  document.addEventListener('pointerdown',(e)=>{
+    if(e.target && e.target.closest('input, select, textarea, label')) return;
+    ensureAudio();
+  },{capture:true});
+
+  bindInputFocusFix();
+}
+
+function bindInputFocusFix(){
+  // iPad Safari / PWA で canvas 操作後に入力フォーカスが阻害されるケースへの対策
+  const inputs = [els.residentName, els.customCategory, els.newCategoryName, els.newCategoryEmoji].filter(Boolean);
+  inputs.forEach(inp => {
+    inp.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      // 念のため残っている pointer capture を解放してからジェスチャー状態を初期化
+      try{
+        if(els.registerCanvas && state.selectionPointers){
+          for(const pointerId of state.selectionPointers.keys()){
+            if(els.registerCanvas.hasPointerCapture?.(pointerId)) els.registerCanvas.releasePointerCapture(pointerId);
+          }
+        }
+      }catch(_){}
+      state.selectionPointers.clear();
+      state.selectionGesture = null;
+    });
+    inp.addEventListener('touchend', () => {
+      if (document.activeElement !== inp) {
+        inp.focus();
+      }
+    }, {passive: true});
+    inp.addEventListener('input', () => {
+      if (inp === els.residentName && state.currentSession) {
+        state.currentSession.name = els.residentName.value.trim();
+      }
+    });
+  });
+
+  // インラインキーボードが出ない場合でもOS標準ダイアログから入力できるフォールバック
+  if (els.promptResidentBtn) {
+    els.promptResidentBtn.onclick = () => {
+      const current = els.residentName.value || state.currentSession?.name || '';
+      const entered = prompt('利用者名・識別名を入力してください', current);
+      if (entered !== null) {
+        els.residentName.value = entered.trim();
+        ensureCurrentSession();
+        state.currentSession.name = els.residentName.value;
+      }
+    };
+  }
 }
 
 function showScreen(id){
@@ -368,7 +416,9 @@ function loadRegistrationSession(){
 }
 
 async function loadPhotos(e){
-  const files=[...(e.target.files||[])]; if(!files.length) return;
+  const files=[...(e.target.files||[])];
+  if(els.photoInput) els.photoInput.blur();
+  if(!files.length) return;
   const loaded=[];
   for(const f of files){
     try{
@@ -874,8 +924,19 @@ function showRegisterSuccess(category,count){
 
 function showSummary(){
   if(!state.currentSession||!state.currentSession.items.length){toast('物品を1つ以上登録してください');return;}
-  const finalName=els.residentName.value.trim();
-  if(!finalName){toast('最後に利用者名・識別名を入力してください');els.residentName.focus();return;}
+  let finalName=els.residentName.value.trim();
+  if(!finalName){
+    const entered=prompt('利用者名・識別名を入力してください（例：山田様 / 203号室）','');
+    if(entered && entered.trim()){
+      finalName=entered.trim();
+      els.residentName.value=finalName;
+    }else{
+      toast('利用者名・識別名を入力してください');
+      els.residentName.scrollIntoView({behavior:'smooth',block:'center'});
+      setTimeout(()=>els.residentName.focus(),250);
+      return;
+    }
+  }
   state.currentSession.name=finalName;
   const counts=countCategories(state.currentSession.items);els.summaryList.innerHTML='';
   Object.entries(counts).forEach(([k,v])=>{const d=document.createElement('div');d.className='summary-row';d.innerHTML=`<span>${emojiFor(k)} ${escapeHtml(k)}</span><b>×${v}</b>`;els.summaryList.appendChild(d);});
