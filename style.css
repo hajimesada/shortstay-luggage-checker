@@ -171,32 +171,20 @@
 .camera-wrap .match-badge{z-index:13}
 
 
-/* v0.4.9 Match dock BELOW the camera image. Keep camera unobstructed and make iPad taps reliable. */
+/* v0.5.2: stable v0.4.8 base + match controls below camera */
 .camera-card > .match-question-dock{
-  position:relative;
-  left:auto;right:auto;bottom:auto;
-  z-index:1;
-  margin:8px 0 10px;
-  padding:9px 10px;
-  min-height:78px;
-  border-width:2px;
-  border-radius:16px;
-  display:grid;
-  grid-template-columns:auto minmax(0,1fr) auto;
-  align-items:center;
-  gap:9px;
-  text-align:left;
-  background:#f7fafc;
-  box-shadow:0 5px 16px rgba(38,71,100,.10);
-  overflow:visible;
-  pointer-events:auto;
-  touch-action:manipulation;
+  position:relative; left:auto; right:auto; bottom:auto; z-index:1;
+  margin:8px 0 10px; padding:9px 10px; min-height:78px;
+  border-width:2px; border-radius:16px;
+  display:grid; grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center; gap:9px; text-align:left;
+  background:#f7fafc; box-shadow:0 5px 16px rgba(38,71,100,.10);
+  overflow:visible; pointer-events:auto;
 }
 .camera-card > .match-question-dock.waiting,
 .camera-card > .match-question-dock.locked,
 .camera-card > .match-question-dock.complete{
-  grid-template-columns:minmax(0,1fr);
-  min-height:62px;
+  grid-template-columns:minmax(0,1fr); min-height:62px;
 }
 .camera-card > .match-question-dock .match-question-copy{min-width:0}
 .camera-card > .match-question-dock .match-question-title-row{display:flex;align-items:center;gap:7px;min-width:0}
@@ -209,33 +197,11 @@
 .camera-card > .match-question-dock.waiting .match-question-title-row,
 .camera-card > .match-question-dock.locked .match-question-title-row,
 .camera-card > .match-question-dock.complete .match-question-title-row{justify-content:center}
-.camera-card > .match-question-dock .match-question-thumb{
-  width:68px;height:68px;
-  position:relative;
-  z-index:2;
-  pointer-events:auto;
-  touch-action:manipulation;
-  -webkit-user-select:none;
-  user-select:none;
-}
+.camera-card > .match-question-dock .match-question-thumb{width:68px;height:68px;position:relative;z-index:2}
 .camera-card > .match-question-dock .camera-inline-confirm{
-  position:relative;
-  z-index:3;
-  pointer-events:auto;
-  touch-action:manipulation;
-  -webkit-user-select:none;
-  user-select:none;
-  margin:0;
-  width:auto;
-  min-width:96px;
-  min-height:58px;
-  padding:10px 14px;
-  border-radius:14px;
-  background:#ffcf4a;
-  color:#533500;
-  font-size:19px;
-  font-weight:950;
-  box-shadow:0 4px 12px rgba(100,70,0,.20);
+  position:relative; z-index:3; margin:0; width:auto; min-width:96px; min-height:58px;
+  padding:10px 14px; border-radius:14px; background:#ffcf4a; color:#533500;
+  font-size:19px; font-weight:950; box-shadow:0 4px 12px rgba(100,70,0,.20);
 }
 .camera-card > .match-question-dock .camera-inline-confirm:active{transform:scale(.96);background:#ffc52d}
 @media(max-width:650px){
@@ -245,19 +211,4 @@
   .camera-card > .match-question-dock .match-question-emoji{font-size:24px}
   .camera-card > .match-question-dock .match-question-sub{font-size:10.5px}
   .camera-card > .match-question-dock .camera-inline-confirm{min-width:82px;min-height:52px;font-size:17px;padding:8px 10px}
-}
-
-/* v0.5.1 resident-name input: native field + prompt fallback */
-.resident-name-fallback{
-  display:block;
-  margin:8px 0 10px;
-  width:100%;
-  background:#eef6ff;
-  color:#24527a;
-  border:1px solid #cfe2f5;
-  touch-action:manipulation;
-}
-#residentName{
-  -webkit-user-select:text;
-  user-select:text;
 }

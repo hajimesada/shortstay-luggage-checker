@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.5.1';
+const APP_VERSION = '0.5.2';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -67,13 +67,13 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=051').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=052').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
 
 function cacheEls(){
-  ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','residentNameFallback','newSessionBtn',
+  ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','newSessionBtn',
    'registerSessionSelect','photoInput','photoStage','registerCanvas','photoHint','photoNav','prevPhoto','nextPhoto','photoCounter',
    'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','finishRegister',
    'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
@@ -91,8 +91,6 @@ function bindUI(){
   els.homeBtn.onclick=()=>showScreen('homeScreen');
   els.settingsBtn.onclick=()=>showScreen('settingsScreen');
   els.newSessionBtn.onclick=newRegistration;
-  if(els.residentNameFallback) els.residentNameFallback.onclick=editResidentNameFallback;
-  els.residentName.addEventListener('input',()=>{ if(state.currentSession) state.currentSession.name=els.residentName.value; });
   els.registerSessionSelect.onchange=loadRegistrationSession;
   els.photoInput.onchange=loadPhotos;
   els.prevPhoto.onclick=()=>changePhoto(-1);
@@ -116,8 +114,8 @@ function bindUI(){
   els.startCamera.onclick=startCamera;
   els.stopCamera.onclick=stopCamera;
   els.captureInput.onchange=matchCapturedPhoto;
-  bindIPadTap(els.manualConfirm,manualConfirm);
-  bindIPadTap(els.matchQuestionThumbBtn,openCurrentCandidatePreview);
+  els.manualConfirm.onclick=manualConfirm;
+  els.matchQuestionThumbBtn.onclick=openCurrentCandidatePreview;
   els.resetChecks.onclick=resetChecks;
   els.itemPreviewClose.onclick=closeItemPreview;
   els.itemPreviewModal.addEventListener('click',e=>{ if(e.target===els.itemPreviewModal) closeItemPreview(); });
@@ -132,33 +130,6 @@ function bindUI(){
   els.resetCategoriesBtn.onclick=resetCategories;
   document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopCamera(); });
   document.addEventListener('pointerdown',()=>ensureAudio(),{once:true,capture:true});
-}
-
-function editResidentNameFallback(){
-  const current=String(els.residentName?.value||'');
-  const entered=window.prompt('利用者名・識別名を入力してください',current);
-  if(entered===null)return;
-  const value=String(entered).trim();
-  els.residentName.value=value;
-  const session=ensureCurrentSession();
-  session.name=value;
-  toast(value ? `利用者名：${value}` : '利用者名を空欄にしました');
-}
-
-function bindIPadTap(el,handler){
-  if(!el)return;
-  let pointerHandledAt=0;
-  el.addEventListener('pointerup',ev=>{
-    if(ev.pointerType==='touch' || ev.pointerType==='pen'){
-      ev.preventDefault();
-      pointerHandledAt=Date.now();
-      handler(ev);
-    }
-  },{passive:false});
-  el.addEventListener('click',ev=>{
-    if(Date.now()-pointerHandledAt<700)return;
-    handler(ev);
-  });
 }
 
 function showScreen(id){
