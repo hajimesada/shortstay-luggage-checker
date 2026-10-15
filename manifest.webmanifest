@@ -1,6 +1,6 @@
 {
-  "name": "ShortStay 荷物チェッカー",
-  "short_name": "荷物チェッカー",
+  "name": "荷物チェックゲーム",
+  "short_name": "荷物ゲーム",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f3f7fb",

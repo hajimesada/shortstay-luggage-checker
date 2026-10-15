@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#28b7a9" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=043" />
+  <link rel="manifest" href="manifest.webmanifest?v=046" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=043" />
+  <link rel="stylesheet" href="style.css?v=046" />
 </head>
 <body>
   <div id="app">
@@ -84,6 +84,21 @@
             <input id="customCategory" class="text-input" placeholder="その他の物品名" />
             <button id="customAddBtn" class="small-btn mint-bg">登録</button>
           </div>
+
+          <!-- バックグラウンド画像認識 進捗表示パネル -->
+          <div id="bgRecogPanel" class="bg-recog-panel hidden" role="status" aria-live="polite">
+            <div class="bg-recog-header">
+              <div class="bg-recog-title-wrap">
+                <span id="bgRecogSpinner" class="bg-spinner"></span>
+                <span id="bgRecogTitle">画像認識中…</span>
+              </div>
+              <span id="bgRecogMeta" class="bg-recog-meta">残り 0 件</span>
+            </div>
+            <div class="bg-recog-track">
+              <div id="bgRecogFill" class="bg-recog-fill"></div>
+            </div>
+            <div id="bgRecogSub" class="bg-recog-sub">生地・縫い目・局所特徴を解析しています</div>
+          </div>
         </div>
 
         <div class="card">
@@ -115,6 +130,11 @@
             <button id="startCamera" class="camera-btn">📷 カメラ開始</button>
             <button id="stopCamera" class="small-btn" disabled>停止</button>
             <label class="small-btn file-capture">1枚撮って照合<input id="captureInput" type="file" accept="image/*" capture="environment" hidden /></label>
+          </div>
+          <div class="match-question waiting" id="matchQuestion" aria-live="polite">
+            <div class="match-question-emoji" id="matchQuestionEmoji">🔎</div>
+            <div class="match-question-main" id="matchQuestionMain">物品を枠に入れてください</div>
+            <div class="match-question-sub" id="matchQuestionSub">候補が見つかると「上着ですか？」のように大きく表示します</div>
           </div>
           <div class="score-panel">
             <div><span>候補</span><b id="candidateName">—</b></div>
@@ -176,7 +196,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.4.1は、初回の物品カテゴリをタップしても登録できない不具合を修正しました。選択範囲は1本指で移動・2本指で拡大縮小でき、登録時は大きな〇＋ピコンで確認できます。</p>
+          <p>v0.4.6は退所時照合で「🧥 上着ですか？」のように候補物品名を大きく表示し、一致度と確認状態を一目で分かるようにしました。</p>
         </div>
       </section>
     </main>
@@ -188,11 +208,12 @@
         <h2>今回のお荷物</h2>
         <div id="summaryList" class="summary-list"></div>
         <div id="summaryTotal" class="summary-total"></div>
+        <div id="summaryBgStatus" class="summary-bg-status hidden"></div>
         <p>これでいいですか？</p>
         <div class="row center gap8"><button id="backToEdit" class="small-btn">← 修正する</button><button id="confirmRegister" class="ok-btn">OK！</button></div>
       </div>
     </div>
   </div>
-<script src="app.js?v=043"></script>
+<script src="app.js?v=046"></script>
 </body>
 </html>

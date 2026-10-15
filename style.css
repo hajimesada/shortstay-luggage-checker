@@ -18,3 +18,44 @@
 .cat-btn.cat-working{background:#fff2c7!important;border-color:#ffca43!important;box-shadow:0 0 0 4px rgba(255,202,67,.22) inset}
 .cat-btn.cat-working:after{content:'登録中…';position:absolute;left:5px;right:5px;bottom:3px;font-size:10px;color:#735000;font-weight:900}
 .cat-btn:disabled{opacity:.68}
+
+/* v0.4.5 Background recognition progress & item status badges */
+.bg-recog-panel{margin-top:12px;padding:12px 14px;border-radius:16px;background:#f0f7ff;border:1.5px solid #bfdaff;transition:background .25s,border-color .25s}
+.bg-recog-panel.done{background:#eafaf4;border-color:#a5e6cd}
+.bg-recog-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;font-weight:800;font-size:14px;color:#1d3b58}
+.bg-recog-panel.done .bg-recog-header{color:#12634a}
+.bg-recog-title-wrap{display:flex;align-items:center;gap:8px}
+.bg-recog-meta{font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.85);color:#2b547e;font-weight:800;white-space:nowrap}
+.bg-recog-panel.done .bg-recog-meta{color:#147b71}
+.bg-spinner{width:15px;height:15px;border:2.5px solid rgba(43,108,176,.25);border-top-color:#2b6cb0;border-radius:50%;animation:bgSpin .75s linear infinite;flex-shrink:0}
+.bg-recog-panel.done .bg-spinner{display:none}
+@keyframes bgSpin{to{transform:rotate(360deg)}}
+.bg-recog-track{width:100%;height:9px;background:rgba(180,205,235,.42);border-radius:999px;overflow:hidden}
+.bg-recog-fill{height:100%;width:0%;background:linear-gradient(90deg,#4b8ff7,#28b7a9);border-radius:999px;transition:width .18s ease}
+.bg-recog-panel.done .bg-recog-fill{background:linear-gradient(90deg,#28b7a9,#34d399)}
+.bg-recog-sub{margin-top:6px;font-size:12px;color:#526980;font-weight:700}
+.bg-recog-panel.done .bg-recog-sub{color:#1b7357}
+
+.history-thumb{width:44px;height:44px;border-radius:10px;object-fit:cover;border:1px solid #d5e3ec;background:#e9f1f5;flex-shrink:0}
+.chip-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:3px}
+.chip.status-pending{background:#eef2f6;color:#5b6b79}
+.chip.status-working{background:#fff3cd;color:#855a00}
+.chip.status-done{background:#dff8f3;color:#117a65}
+.chip.status-basic{background:#f3e8ff;color:#6b21a8}
+.summary-bg-status{margin:10px 0;padding:10px 12px;border-radius:12px;font-size:13px;font-weight:800;background:#f0f7ff;color:#1d4f82;border:1px solid #bfdaff}
+.summary-bg-status.done{background:#eafaf4;color:#12634a;border-color:#a5e6cd}
+
+/* v0.4.6 Large, easy-to-read match question */
+.match-question{margin:12px 0 10px;padding:18px 14px;border-radius:20px;text-align:center;border:3px solid #d7e5ec;background:#f7fafc;box-shadow:0 8px 20px rgba(38,71,100,.08);transition:.18s ease}
+.match-question-emoji{font-size:40px;line-height:1;margin-bottom:5px}
+.match-question-main{font-size:30px;line-height:1.2;font-weight:950;letter-spacing:.01em;color:#203341}
+.match-question-sub{font-size:14px;line-height:1.4;font-weight:800;color:#667987;margin-top:8px}
+.match-question.waiting{border-color:#d7e5ec;background:#f7fafc}
+.match-question.possible{border-color:#ffcf4a;background:#fff8dc;box-shadow:0 0 0 5px rgba(255,207,74,.14),0 8px 20px rgba(38,71,100,.08)}
+.match-question.possible .match-question-main{color:#6a4900}
+.match-question.confident{border-color:#38c9a9;background:#eafbf5;box-shadow:0 0 0 5px rgba(56,201,169,.14),0 8px 20px rgba(38,71,100,.08)}
+.match-question.confident .match-question-main{color:#0d6e5a}
+.match-question.locked{border-color:#89a4b4;background:#f0f5f7}
+.match-question.complete{border-color:#32c48d;background:#e9fbf3}
+.match-question.complete .match-question-main{color:#116a4c}
+@media(max-width:650px){.match-question{padding:16px 10px}.match-question-main{font-size:27px}.match-question-emoji{font-size:36px}}
