@@ -305,3 +305,13 @@
   .match-candidate-card{grid-template-columns:100px minmax(0,1fr) 82px;gap:7px;padding:7px}
   .match-candidate-text b{font-size:16px}.match-candidate-text span{font-size:11px}.match-candidate-yes{min-height:52px;font-size:16px;padding:7px}
 }
+
+
+/* v0.5.6: 同一利用者の追加写真フロー */
+.register-actions{display:grid;grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr);gap:10px;margin-top:4px}
+.register-actions .finish-btn{margin:0}
+.add-photo-btn{width:100%;border:0;border-radius:22px;padding:17px 14px;background:linear-gradient(135deg,#e8f7ff,#dff8f3);color:#176b72;font-weight:900;font-size:18px;box-shadow:var(--shadow);border:2px solid #9fded5;touch-action:manipulation}
+.add-photo-btn:active,.add-more-summary:active{transform:scale(.98)}
+.add-more-summary{background:#e8f7ff!important;color:#176b72!important;border:1.5px solid #9fded5!important}
+.summary-actions{margin-top:4px}
+@media(max-width:560px){.register-actions{grid-template-columns:1fr}.register-actions .finish-btn,.add-photo-btn{width:100%}}

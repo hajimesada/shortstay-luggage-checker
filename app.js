@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.5.5';
+const APP_VERSION = '0.5.6';
 const MATCH_POLICY = Object.freeze({ minColor:0.54, minCandidate:0.50, minAuto:0.80, minMargin:0.03, maxCandidates:4 });
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
@@ -71,7 +71,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=055').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=056').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -79,8 +79,8 @@ async function init(){
 function cacheEls(){
   ['homeScreen','registerScreen','checkScreen','settingsScreen','statusText','homeSessions','residentName','promptResidentBtn','newSessionBtn',
    'registerSessionSelect','photoInput','photoStage','registerCanvas','photoHint','photoNav','prevPhoto','nextPhoto','photoCounter',
-   'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','finishRegister',
-   'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
+   'selectionNote','categoryGrid','customRow','customCategory','customAddBtn','undoBtn','redoBtn','registerHistory','addPhotoBtn','finishRegister',
+   'summaryModal','summaryList','summaryTotal','summaryBgStatus','backToEdit','summaryAddPhoto','confirmRegister','checkSessionSelect','cameraVideo','cameraCanvas','matchBadge',
    'successPop','successText','candidateName','scoreText','scoreBar','matchQuestion','matchQuestionEmoji','matchQuestionMain','matchQuestionSub','matchQuestionThumbBtn','matchQuestionThumb','matchCandidateList','matchQuestionActions','startCamera','stopCamera','captureInput','manualConfirm','rejectCandidate','checkList',
    'itemPreviewModal','itemPreviewImage','itemPreviewTitle','itemPreviewMeta','itemPreviewClose','itemPreviewCaption',
    'resetChecks','highThreshold','lowThreshold','highThresholdLabel','lowThresholdLabel','exportBtn','importInput','homeBtn','settingsBtn',
@@ -111,8 +111,10 @@ function bindUI(){
   els.customAddBtn.onclick=()=>registerSelection(els.customCategory.value.trim() || 'その他');
   els.undoBtn.onclick=undo;
   els.redoBtn.onclick=redo;
+  els.addPhotoBtn.onclick=()=>prepareAdditionalPhoto(true);
   els.finishRegister.onclick=showSummary;
   els.backToEdit.onclick=()=>els.summaryModal.classList.add('hidden');
+  els.summaryAddPhoto.onclick=()=>{ els.summaryModal.classList.add('hidden'); prepareAdditionalPhoto(true); };
   els.confirmRegister.onclick=confirmRegistration;
   els.checkSessionSelect.onchange=()=>{ resetCandidatePrompt(false); renderCheckList(); };
   els.startCamera.onclick=startCamera;
@@ -430,12 +432,44 @@ async function loadPhotos(e){
       const data=await fileToDataURL(f); const img=await loadImage(data);
       const normalized=await normalizeImage(img,1600,.84);
       const nimg=await loadImage(normalized);
-      loaded.push({data:normalized,img:nimg,name:f.name});
+      // sourcePhotoKeyで写真を一意に識別する。
+      // これにより次の写真が配列index 0になっても、前の写真の枠が重ならない。
+      loaded.push({key:makeId(),data:normalized,img:nimg,name:f.name});
     }catch(err){ console.error(err); }
   }
   if(!loaded.length){ toast('写真を読み込めませんでした'); return; }
-  state.photos=loaded; state.photoIndex=0; state.selectedRect=null;
+
+  // 既存写真を捨てず、同じ利用者の登録セッションへ追加する。
+  const firstNewIndex=state.photos.length;
+  state.photos.push(...loaded);
+  state.photoIndex=firstNewIndex;
+  state.selectedRect=null;
+  if(els.photoInput) els.photoInput.value='';
   drawRegisterPhoto();
+  toast(loaded.length>1 ? `📷 ${loaded.length}枚追加しました` : '📷 追加写真を読み込みました');
+}
+
+function prepareAdditionalPhoto(openPicker=false){
+  ensureCurrentSession();
+  const enteredName=els.residentName?.value?.trim();
+  if(enteredName) state.currentSession.name=enteredName;
+
+  state.selectedRect=null;
+  if(els.photoInput) els.photoInput.value='';
+  clearRegisterCanvas();
+  if(els.selectionNote) els.selectionNote.textContent='次の写真を読み込んでください。これまでの登録物品はそのまま集計されます。';
+  if(els.photoHint){
+    els.photoHint.textContent='次の写真を読み込んでください';
+    els.photoHint.classList.remove('hidden');
+  }
+  els.photoStage?.scrollIntoView({behavior:'smooth',block:'center'});
+  toast('＋ 次の写真を追加できます');
+
+  // ボタン操作から直接呼ばれた場合は、そのまま写真選択を開く。
+  // iPadで開かなかった場合でも、上の「写真を読み込む」から選択できる。
+  if(openPicker){
+    setTimeout(()=>{ try{ els.photoInput?.click(); }catch(e){} },120);
+  }
 }
 
 function clearRegisterCanvas(){
@@ -455,7 +489,7 @@ function drawRegisterPhoto(){
   const maxW=1200,maxH=900,scale=Math.min(maxW/img.width,maxH/img.height,1);
   c.width=Math.max(1,Math.round(img.width*scale)); c.height=Math.max(1,Math.round(img.height*scale));
   ctx.drawImage(img,0,0,c.width,c.height);
-  const items=(state.currentSession?.items||[]).filter(x=>x.sourcePhotoIndex===state.photoIndex && x.marker);
+  const items=(state.currentSession?.items||[]).filter(x=>x.marker && x.sourcePhotoKey && p.key && x.sourcePhotoKey===p.key);
   items.forEach((it,i)=>{
     const r=it.marker; ctx.strokeStyle='rgba(77,255,195,.95)';ctx.lineWidth=4;ctx.strokeRect(r.x*c.width,r.y*c.height,r.w*c.width,r.h*c.height);
     ctx.fillStyle='rgba(18,48,54,.82)';ctx.fillRect(r.x*c.width,r.y*c.height,Math.min(155,r.w*c.width),28);
@@ -592,7 +626,7 @@ async function registerSelection(category, sourceButton=null){
     pushUndo();
     const item={
       id:makeId(), category, crop, descriptor, checked:false,
-      sourcePhotoIndex:photoIndex, marker:{...rect},
+      sourcePhotoIndex:photoIndex, sourcePhotoKey:p.key||makeId(), marker:{...rect},
       createdAt:new Date().toISOString(),
       descriptorLevel:'pending',
       recogProgress: 10
@@ -1290,7 +1324,7 @@ async function evaluateDescriptor(desc,singleShot=false){
     return {item:x,score:detail.score,detail};
   }).sort((a,b)=>b.score-a.score);
 
-  // v0.5.5: 色54%以上 + 総合50%以上なら「職員確認用の候補」として提示する。
+  // v0.5.6: 色54%以上 + 総合50%以上なら「職員確認用の候補」として提示する。
   // 自動確定はせず、一度表示した候補は「はい / いいえ」まで固定する。
   const eligible=allScored.filter(x=>x.detail.colorPass && x.score>=Math.max(state.lowThreshold,MATCH_POLICY.minCandidate));
   const shown=eligible.slice(0,MATCH_POLICY.maxCandidates);

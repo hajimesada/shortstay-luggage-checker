@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=055" />
+  <link rel="manifest" href="manifest.webmanifest?v=056" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=055" />
+  <link rel="stylesheet" href="style.css?v=056" />
 </head>
 <body>
   <div id="app">
@@ -110,7 +110,10 @@
           <div id="registerHistory" class="history empty">まだ物品は登録されていません</div>
         </div>
 
-        <button id="finishRegister" class="finish-btn">✨ 登録終了・集計へ</button>
+        <div class="register-actions">
+          <button id="addPhotoBtn" type="button" class="add-photo-btn">＋ 追加の写真</button>
+          <button id="finishRegister" class="finish-btn">✨ 登録終了・集計へ</button>
+        </div>
       </section>
 
       <section class="screen" id="checkScreen">
@@ -175,7 +178,7 @@
           <div class="section-title">照合しきい値</div>
           <label class="range-row">高一致表示 <b id="highThresholdLabel">80%</b><input id="highThreshold" type="range" min="80" max="95" value="80" /></label>
           <label class="range-row">候補表示 <b id="lowThresholdLabel">50%</b><input id="lowThreshold" type="range" min="50" max="79" value="50" /></label>
-          <p class="note">v0.5.5は色一致54%以上・総合50%以上で候補を表示します。一度候補が出たら消さずに固定し、「はい」で確定、「いいえ」で照合へ戻ります。候補が複数ある場合は登録画像を並べて職員が選択します。自動確定はしません。</p>
+          <p class="note">v0.5.6は候補提示＋職員確認の照合方式を維持しつつ、同じ利用者の登録中に「＋ 追加の写真」で次の写真へ続けて登録できます。写真ごとに枠を分離するため、前の写真の登録枠が新しい写真へ重なることはありません。</p>
         </div>
         <div class="card">
           <div class="row between wrap gap8">
@@ -212,7 +215,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.5.5は「完全自動認証」ではなく「候補提示＋職員確認」を優先します。色54%以上・総合50%以上で候補を出し、一度出た候補は固定表示。「はい」で照合確定、「いいえ」で戻ります。複数候補は登録画像・一致度・色一致度を並べて選べます。OCRはまだ未搭載です。</p>
+          <p>v0.5.6は「候補提示＋職員確認」を維持し、入所登録で複数写真を連続追加できるようにしました。追加写真は同じ利用者・同じ集計に加算され、写真ごとの登録枠は独立して管理されます。OCRはまだ未搭載です。</p>
         </div>
       </section>
     </main>
@@ -245,10 +248,14 @@
         <div id="summaryTotal" class="summary-total"></div>
         <div id="summaryBgStatus" class="summary-bg-status hidden"></div>
         <p>これでいいですか？</p>
-        <div class="row center gap8"><button id="backToEdit" class="small-btn">← 修正する</button><button id="confirmRegister" class="ok-btn">OK！</button></div>
+        <div class="row center gap8 wrap summary-actions">
+          <button id="backToEdit" class="small-btn">← 修正する</button>
+          <button id="summaryAddPhoto" type="button" class="small-btn add-more-summary">＋ 追加写真</button>
+          <button id="confirmRegister" class="ok-btn">OK！</button>
+        </div>
       </div>
     </div>
   </div>
-<script src="app.js?v=055"></script>
+<script src="app.js?v=056"></script>
 </body>
 </html>
