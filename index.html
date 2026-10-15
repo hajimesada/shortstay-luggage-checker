@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=056" />
+  <link rel="manifest" href="manifest.webmanifest?v=057" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=056" />
+  <link rel="stylesheet" href="style.css?v=057" />
 </head>
 <body>
   <div id="app">
@@ -178,7 +178,7 @@
           <div class="section-title">照合しきい値</div>
           <label class="range-row">高一致表示 <b id="highThresholdLabel">80%</b><input id="highThreshold" type="range" min="80" max="95" value="80" /></label>
           <label class="range-row">候補表示 <b id="lowThresholdLabel">50%</b><input id="lowThreshold" type="range" min="50" max="79" value="50" /></label>
-          <p class="note">v0.5.6は候補提示＋職員確認の照合方式を維持しつつ、同じ利用者の登録中に「＋ 追加の写真」で次の写真へ続けて登録できます。写真ごとに枠を分離するため、前の写真の登録枠が新しい写真へ重なることはありません。</p>
+          <p class="note">v0.5.7は候補条件を「色50%以上＋総合50%以上」に緩和しました。明確な主色違い・極端な明るさ違いだけは誤候補防止のため除外します。追加写真フローはそのまま使えます。</p>
         </div>
         <div class="card">
           <div class="row between wrap gap8">
@@ -215,7 +215,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.5.6は「候補提示＋職員確認」を維持し、入所登録で複数写真を連続追加できるようにしました。追加写真は同じ利用者・同じ集計に加算され、写真ごとの登録枠は独立して管理されます。OCRはまだ未搭載です。</p>
+          <p>v0.5.7は「候補提示＋職員確認」を維持し、候補条件を色50%以上・総合50%以上へ調整しました。白と黒など主色が明確に違う場合や極端な明度差だけは候補から除外します。複数写真の追加登録も引き続き利用できます。OCRはまだ未搭載です。</p>
         </div>
       </section>
     </main>
@@ -256,6 +256,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=056"></script>
+<script src="app.js?v=057"></script>
 </body>
 </html>

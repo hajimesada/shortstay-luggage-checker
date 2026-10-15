@@ -1,7 +1,7 @@
 'use strict';
 
-const APP_VERSION = '0.5.6';
-const MATCH_POLICY = Object.freeze({ minColor:0.54, minCandidate:0.50, minAuto:0.80, minMargin:0.03, maxCandidates:4 });
+const APP_VERSION = '0.5.7';
+const MATCH_POLICY = Object.freeze({ minColor:0.50, minCandidate:0.50, minAuto:0.80, minMargin:0.03, maxCandidates:4 });
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -71,7 +71,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=056').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=057').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -1224,7 +1224,7 @@ function setMatchQuestion({item=null,category='',score=0,mode='waiting',hits=0}=
     els.manualConfirm.classList.add('hidden');
     els.matchQuestionEmoji.textContent='✕';
     els.matchQuestionMain.textContent='一致候補なし';
-    els.matchQuestionSub.textContent='総合50%以上・色54%以上の候補がありません';
+    els.matchQuestionSub.textContent='総合50%以上・色50%以上の候補がありません';
     return;
   }
   if(!category){
@@ -1324,7 +1324,7 @@ async function evaluateDescriptor(desc,singleShot=false){
     return {item:x,score:detail.score,detail};
   }).sort((a,b)=>b.score-a.score);
 
-  // v0.5.6: 色54%以上 + 総合50%以上なら「職員確認用の候補」として提示する。
+  // v0.5.7: 色50%以上 + 総合50%以上なら「職員確認用の候補」として提示する。
   // 自動確定はせず、一度表示した候補は「はい / いいえ」まで固定する。
   const eligible=allScored.filter(x=>x.detail.colorPass && x.score>=Math.max(state.lowThreshold,MATCH_POLICY.minCandidate));
   const shown=eligible.slice(0,MATCH_POLICY.maxCandidates);
@@ -1350,7 +1350,13 @@ async function evaluateDescriptor(desc,singleShot=false){
     els.manualConfirm.classList.add('hidden');
     els.rejectCandidate.classList.add('hidden');
     setMatchQuestion({mode:'nomatch'});
-    const why=rawBest?.detail?.colorPass===false ? `色 ${Math.round((rawBest.detail.color||0)*100)}% < 54%` : `総合 ${Math.round((rawBest?.score||0)*100)}% < 50%`;
+    let why=`総合 ${Math.round((rawBest?.score||0)*100)}% < 50%`;
+    if(rawBest?.detail?.colorPass===false){
+      const d=rawBest.detail;
+      if(d.rejectedReason==='dominant-color-conflict') why=`色 ${Math.round((d.color||0)*100)}% / 主色が大きく異なるため除外`;
+      else if(d.rejectedReason==='brightness-color-conflict') why=`色 ${Math.round((d.color||0)*100)}% / 明るさが大きく異なるため除外`;
+      else why=`色 ${Math.round((d.color||0)*100)}% < 50%`;
+    }
     els.candidateName.textContent='候補なし';els.scoreText.textContent='—';els.scoreBar.style.width='0%';
     els.matchBadge.textContent=`一致候補なし（${why}）`;
     if(singleShot || now-state.lastLogAt>=2200){
@@ -1605,7 +1611,7 @@ function descriptorSimilarityDetailed(a,b){
   return {
     score:clamp(score,0,1),color,colorRaw:cm.raw,colorCoarse:cm.coarse,pattern,texture,edge,hash,local,
     brightnessPenalty,localUsed,colorPass,dominantConflict:cm.dominantConflict,
-    rejectedReason:colorPass?'':(cm.dominantConflict?'dominant-color-conflict':(obviousBrightnessMismatch?'brightness-color-conflict':'color-below-54'))
+    rejectedReason:colorPass?'':(cm.dominantConflict?'dominant-color-conflict':(obviousBrightnessMismatch?'brightness-color-conflict':'color-below-50'))
   };
 }
 
