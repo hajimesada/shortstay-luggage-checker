@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="荷物チェッカー" />
   <title>ShortStay 荷物チェッカー</title>
-  <link rel="manifest" href="manifest.webmanifest?v=048" />
+  <link rel="manifest" href="manifest.webmanifest?v=049" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=048" />
+  <link rel="stylesheet" href="style.css?v=049" />
 </head>
 <body>
   <div id="app">
@@ -125,24 +125,25 @@
             <div class="scan-frame"><span></span></div>
             <div class="match-badge" id="matchBadge">カメラ停止中</div>
 
-            <!-- v0.4.8: 照合操作をカメラ枠内で完結 -->
-            <div class="match-question waiting" id="matchQuestion" aria-live="polite">
-              <button type="button" class="match-question-thumb hidden" id="matchQuestionThumbBtn" aria-label="候補の登録画像を拡大表示">
-                <img id="matchQuestionThumb" alt="候補の入所時登録画像" />
-                <span>登録画像</span>
-              </button>
-              <div class="match-question-copy">
-                <div class="match-question-title-row">
-                  <span class="match-question-emoji" id="matchQuestionEmoji">🔎</span>
-                  <div class="match-question-main" id="matchQuestionMain">物品を枠に入れてください</div>
-                </div>
-                <div class="match-question-sub" id="matchQuestionSub">候補が見つかるとここに表示します</div>
-              </div>
-              <button id="manualConfirm" class="manual-confirm camera-inline-confirm hidden">はい ✓</button>
-            </div>
-
             <div class="success-pop" id="successPop"><div class="big-circle">〇</div><div id="successText">一致！</div></div>
           </div>
+
+          <!-- v0.4.9: カメラ画像を邪魔しない、画像直下の照合ドック -->
+          <div class="match-question waiting match-question-dock" id="matchQuestion" aria-live="polite">
+            <button type="button" class="match-question-thumb hidden" id="matchQuestionThumbBtn" aria-label="候補の登録画像を拡大表示">
+              <img id="matchQuestionThumb" alt="候補の入所時登録画像" />
+              <span>登録画像</span>
+            </button>
+            <div class="match-question-copy">
+              <div class="match-question-title-row">
+                <span class="match-question-emoji" id="matchQuestionEmoji">🔎</span>
+                <div class="match-question-main" id="matchQuestionMain">物品を枠に入れてください</div>
+              </div>
+              <div class="match-question-sub" id="matchQuestionSub">候補が見つかるとここに表示します</div>
+            </div>
+            <button type="button" id="manualConfirm" class="manual-confirm camera-inline-confirm hidden">はい ✓</button>
+          </div>
+
           <div class="row center gap8 wrap">
             <button id="startCamera" class="camera-btn">📷 カメラ開始</button>
             <button id="stopCamera" class="small-btn" disabled>停止</button>
@@ -207,7 +208,7 @@
         </div>
         <div class="card warning-card">
           <div class="section-title">この版について</div>
-          <p>v0.4.8は退所時の照合操作をカメラ枠内で完結できるようにしました。候補名の横に入所時サムネイルを表示し、タップで拡大できます。「はい」ボタンもカメラ枠内に表示するため、照合中に下へスクロールする必要がありません。</p>
+          <p>v0.4.9は「上着ですか？／登録サムネイル／はい」をカメラ画像の直下へ移動しました。映像を隠さず、候補画像をタップして拡大しながら、その場で「はい」を押して目視確定できます。iPadでのタップ競合を避けるため、確認ボタンをカメラ映像レイヤーの外に配置しています。</p>
         </div>
       </section>
     </main>
@@ -244,6 +245,6 @@
       </div>
     </div>
   </div>
-<script src="app.js?v=048"></script>
+<script src="app.js?v=049"></script>
 </body>
 </html>

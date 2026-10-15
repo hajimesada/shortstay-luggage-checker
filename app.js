@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '0.4.8';
+const APP_VERSION = '0.4.9';
 const DB_NAME = 'shortstay-luggage-db';
 const DB_VERSION = 1;
 const STORE = 'sessions';
@@ -67,7 +67,7 @@ async function init(){
   renderCategoryManager();
   loadTestLogs();
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=048').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js?v=049').catch(()=>{});
   }
   setStatus(`v${APP_VERSION} / 端末内保存・サーバ送信なし`);
 }
@@ -114,8 +114,8 @@ function bindUI(){
   els.startCamera.onclick=startCamera;
   els.stopCamera.onclick=stopCamera;
   els.captureInput.onchange=matchCapturedPhoto;
-  els.manualConfirm.onclick=manualConfirm;
-  els.matchQuestionThumbBtn.onclick=openCurrentCandidatePreview;
+  bindIPadTap(els.manualConfirm,manualConfirm);
+  bindIPadTap(els.matchQuestionThumbBtn,openCurrentCandidatePreview);
   els.resetChecks.onclick=resetChecks;
   els.itemPreviewClose.onclick=closeItemPreview;
   els.itemPreviewModal.addEventListener('click',e=>{ if(e.target===els.itemPreviewModal) closeItemPreview(); });
@@ -130,6 +130,22 @@ function bindUI(){
   els.resetCategoriesBtn.onclick=resetCategories;
   document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopCamera(); });
   document.addEventListener('pointerdown',()=>ensureAudio(),{once:true,capture:true});
+}
+
+function bindIPadTap(el,handler){
+  if(!el)return;
+  let pointerHandledAt=0;
+  el.addEventListener('pointerup',ev=>{
+    if(ev.pointerType==='touch' || ev.pointerType==='pen'){
+      ev.preventDefault();
+      pointerHandledAt=Date.now();
+      handler(ev);
+    }
+  },{passive:false});
+  el.addEventListener('click',ev=>{
+    if(Date.now()-pointerHandledAt<700)return;
+    handler(ev);
+  });
 }
 
 function showScreen(id){
